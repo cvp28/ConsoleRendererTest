@@ -1,0 +1,29 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "(D) .NET Core Launch (console)",
+			"type": "coreclr",
+			"request": "launch",
+			"program": "${workspaceFolder}/ConsoleRendererTest/bin/Debug/net8.0/ConsoleRendererTest.dll",
+			"args": [],
+			"cwd": "${workspaceFolder}",
+			"stopAtEntry": false,
+			"console": "externalTerminal"
+		},
+		{
+			"name": "(R) .NET Core Launch (console)",
+			"type": "coreclr",
+			"request": "launch",
+			"program": "${workspaceFolder}/ConsoleRendererTest/bin/Release/net8.0/ConsoleRendererTest.dll",
+			"args": [],
+			"cwd": "${workspaceFolder}",
+			"stopAtEntry": false,
+			"console": "externalTerminal"
+		}
+		
+	]
+}
