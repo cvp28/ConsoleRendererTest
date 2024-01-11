@@ -18,7 +18,7 @@ public partial class Canvas
 	}
 
 	// Entry point for modifying the pixel array
-	// Handles pixel modifications and optimizes redundant ones when able
+	// Handles pixel modifications and optimizes redundant ones away when able
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
 	{
 		var NewPixel = new Pixel()

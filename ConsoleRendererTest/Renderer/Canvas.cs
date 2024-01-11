@@ -127,8 +127,8 @@ public unsafe partial class Canvas
 
 				LastPixelInvalid = false;											// Finally, set to no longer be invalid
 			}
-
-
+			
+			
 		}
 	}
 
