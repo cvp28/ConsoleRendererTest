@@ -193,9 +193,9 @@ public unsafe partial class Canvas
 	
 	/// <summary>
 	/// <para>Takes two style masks: a current one and a new one and produces</para>
-	/// <br>
+	/// <br/>
 	/// <para>a reset mask (all of the styles that need to be reset)</para>
-	/// <br>
+	/// <br/>
 	/// <para>and a set mask (all of the styles that need to be set)</para>
 	/// </summary>
 	/// <param name="CurrentStyle">The currently applied style mask (all styles that have been flushed to the screen)</param>
@@ -432,7 +432,7 @@ public static class StyleHelper
 	/// <summary>
 	/// <para>Gets every stylecode enum contained in the packed byte and returns them in "Dest"</para>
 	/// <para>This allows client code to easily prevent heap allocations from parsing packed styles</para>
-	/// <br>
+	/// <br/>
 	/// <para>(Dest should be a minimum size of 8)</para>
 	/// </summary>
 	/// <param name="PackedStyle">Packed style byte</param>
@@ -458,3 +458,4 @@ public static class StyleHelper
 		Length = Index;
 	}
 }
+
