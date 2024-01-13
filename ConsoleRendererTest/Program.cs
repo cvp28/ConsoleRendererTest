@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Collections.Concurrent;
+using System.Linq.Expressions;
+using System.Text;
 
 using ConsoleRendererTest;
 using ConsoleRendererTest.Codes;
@@ -7,17 +9,22 @@ Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
 Console.Clear();
 
-//	byte Current = StyleHelper.PackStyle(StyleCode.Bold, StyleCode.Underlined, StyleCode.Blink);
-//	byte New = StyleHelper.PackStyle(StyleCode.Bold, StyleCode.Dim, StyleCode.Italic, StyleCode.Underlined, StyleCode.Blink, StyleCode.Inverted, StyleCode.CrossedOut);
-//	byte Reset = (byte) (~New & Current);
-//	byte Set = (byte) ((New | Reset) ^ Current);
-//	
-//	Console.WriteLine($"{Current:b7}");
-//	Console.WriteLine($"{New:b7}");
-//	Console.WriteLine($"{Reset:b7}");
-//	Console.WriteLine($"{Set:b7}");
-
 var c = new Canvas();
+
+var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
+
+// Input capture task
+new Thread(delegate()
+{
+loop:
+	
+	if (!Console.KeyAvailable)
+		goto loop;
+	
+	InputQueue.Enqueue(Console.ReadKey(true));
+	
+	goto loop;
+}).Start();
 
 int CurrentFPS = 0;
 int LastFPS = 0;
@@ -31,22 +38,36 @@ FPSTimer.Elapsed += (sender, args) =>
 
 FPSTimer.Start();
 
-var Width = Console.WindowWidth;
+var Width = Console.WindowWidth / 2;
+var Height = Console.WindowHeight / 2;
 
 while (true)
 {
-	//c.WriteAt(40, 0, $"FPS: {LastFPS}");
-
-	c.WriteAt(0, 0, "Hello");
-	c.WriteAt(5, 0, "World", Color24.White, Color24.Black, StyleCode.Blink);
-	c.WriteAt(15, 0, "normaltexthere");
+	if (InputQueue.Any())
+	{
+		InputQueue.TryDequeue(out var cki);
+		switch (cki.Key)
+		{
+			case ConsoleKey.F1:
+				c.DoBufferDump(1);
+				break;
+		}
+	}
 	
-	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128));
-	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined, StyleCode.Italic);
+	// With just one write, it gets 7+ million iterations (not frames) per second in this loop
+	c.WriteAt(40, 0, $"FPS: {LastFPS}");
 
-	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), Color24.Black, StyleCode.Blink);
-
-	//c.DoBufferDump(1);
+	//	c.WriteAt(0, 0, "Hello");
+	//	c.WriteAt(5, 0, "World", Color24.White, Color24.Black, StyleCode.Blink, StyleCode.Inverted);
+	//	c.WriteAt(15, 0, "normaltexthere");
+	//	
+	//	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128));
+	//	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined, StyleCode.Italic);
+	//	
+	//	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), Color24.Black, StyleCode.Blink);
+	//	
+	//	c.WriteAt(Width, Height, "CHECK THIS SHIT OUT", new(255, 0, 0), new(0, 0, 0), StyleCode.Blink);//, StyleCode.Bold, StyleCode.Underlined, StyleCode.Inverted);
+	
 	c.Flush();
 
 	CurrentFPS++;

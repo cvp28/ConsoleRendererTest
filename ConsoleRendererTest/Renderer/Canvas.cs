@@ -57,6 +57,18 @@ public unsafe partial class Canvas
 					Libc.Write(1, ptr, (uint) Buffer.Length);
 			};
 		}
+		
+		// Set up the screen state (set screen to full white on black and reset cursor to home)
+		Console.Write($"\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', Width * Height)}\u001b[;H");
+		
+		// Set up render state
+		LastPixel = new()
+		{
+			Character = ' ',
+			Foreground = new(255,255,255),
+			Background = new(0,0,0),
+			Style = 0
+		};
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -74,9 +86,6 @@ public unsafe partial class Canvas
 	
 	public void Flush()
 	{
-		if (BufferDumpQuantity > 0)
-			File.AppendAllText(@".\BufferDump.txt", $"Frame {BufferDumpQuantity}\n");
-
 		if (ModifiedIndices.Count != 0)
 		{
 			Buffer.Clear();
@@ -90,18 +99,25 @@ public unsafe partial class Canvas
 		// Draw step
 		if (Buffer.Length > 0)
 		{
+			if (BufferDumpQuantity > 0)
+			{
+				File.AppendAllText(@"BufferDump.txt", Buffer.ToString() + "\n\n");
+				BufferDumpQuantity--;
+			}
+			
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(Buffer.ToString());
 			PlatformWriteStdout(FinalFrame);
 			ModifiedIndices.Clear();
 		}
 		
 	}
-
-	private Pixel LastPixel = new();
+	
+	private int LastIndex = 0;
+	private int LastY = 0;
+	private Pixel LastPixel;
 
 	// Only set to true at the start of the application
 	// (in which case LastPixel does not represent valid data that is actually on the screen)
-	private bool LastPixelInvalid = true;
 
 	private void RenderModifiedPixels()
 	{
@@ -114,81 +130,37 @@ public unsafe partial class Canvas
 		{
 			// Nifty little way of converting indices to coordinates
 			(int Y, int X) = Math.DivRem(i, Width);
-
+			
 			var CurrentPixel = CurrentFramePixels[i];
-
-			if (LastPixelInvalid)
+			
+			// First, handle position
+			if (i - LastIndex != 1)
+				Buffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");
+			
+			// Then, handle colors and styling
+			if (CurrentPixel.Foreground != LastPixel.Foreground)
+				CurrentPixel.Foreground.AsForegroundVT(ref Buffer);
+			
+			if (CurrentPixel.Background != LastPixel.Background)
+				CurrentPixel.Background.AsBackgroundVT(ref Buffer);
+			
+			if (CurrentPixel.Style != LastPixel.Style)
 			{
-				Buffer.Append($"\u001b[{Y + 1};{X + 1}H");							// Write coordinates
-				CurrentPixel.Background.AsBackgroundVT(ref Buffer);					// Write background
-				CurrentPixel.Foreground.AsForegroundVT(ref Buffer);					// Write foreground
-				if (CurrentPixel.Styled) AppendSetSequence(CurrentPixel.Style);		// Write style (if set)
-				Buffer.Append(CurrentPixel.Character);								// Write character
-
-				LastPixelInvalid = false;											// Finally, set to no longer be invalid
+				(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, CurrentPixel.Style);
+				AppendStyleTransitionSequence(ResetMask, SetMask);
 			}
 			
+			Buffer.Append(CurrentPixel.Character);
 			
+			// Write our modifications back to the array
+			CurrentFramePixels[i] = CurrentPixel;
+			LastFramePixels[i] = CurrentPixel;
+			
+			// Store this state for future reference
+			LastIndex = i;
+			LastY = Y;
+			LastPixel = CurrentPixel;
 		}
-	}
-
-	private void RenderModifiedPixels2()
-	{
-		//	if (ModifiedIndices.Count == 0)
-		//		return;
-		//	
-		//	ModifiedIndices.Sort();
-		//	
-		//	int X = ModifiedIndices[0] % Width;
-		//	int Y = ModifiedIndices[0] / Width;
-		//	
-		//	int LastIndex = ModifiedIndices[0];
-		//	Pixel LastPixel = CurrentFramePixels[LastIndex];
-		//	Pixel CurrentPixel = CurrentFramePixels[LastIndex];
-		//	
-		//	Buffer.Append($"\u001b[{Y + 1};{X + 1}H");
-		//	Buffer.Append(LastPixel.Background.AsBackgroundVT());
-		//	Buffer.Append(LastPixel.Foreground.AsForegroundVT());
-		//	
-		//	if (LastPixel.Styled)
-		//		AppendSetSequence(LastPixel.Style);
-		//	
-		//	Buffer.Append(LastPixel.Character);
-		//	LastFramePixels[ModifiedIndices[0]] = LastPixel;
-		//	
-		//	if (ModifiedIndices.Count == 1)
-		//		return;
-		//	
-		//	foreach (var i in ModifiedIndices.Span.Slice(1))
-		//	{
-		//		X = i % Width;
-		//		Y = i / Width;
-		//		CurrentPixel = CurrentFramePixels[i];
-		//		
-		//		if (i - LastIndex != 1)
-		//			Buffer.Append($"\u001b[{Y + 1};{X + 1}H");
-		//		
-		//		if (CurrentPixel.Background != LastPixel.Background)
-		//			Buffer.Append(CurrentPixel.Background.AsBackgroundVT());
-		//		
-		//		if (CurrentPixel.Foreground != LastPixel.Foreground)
-		//			Buffer.Append(CurrentPixel.Foreground.AsForegroundVT());
-		//		
-		//		if (LastPixel.Style != CurrentPixel.Style)
-		//		{
-		//			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, CurrentPixel.Style);
-		//			AppendStyleTransitionSequence(ResetMask, SetMask);
-		//		}
-		//		
-		//		Buffer.Append(CurrentFramePixels[i].Character);
-		//		
-		//		LastFramePixels[i] = CurrentFramePixels[i];
-		//		
-		//		LastPixel = CurrentPixel;
-		//	}
-		//	
-		//	if (CurrentPixel.Style != 0)
-		//		AppendResetSequence(CurrentPixel.Style);
 	}
 	
 	/// <summary>
