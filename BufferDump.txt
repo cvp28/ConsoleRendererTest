@@ -1,12 +1,4 @@
 Buffer Dump
 
-Frame 1
-Row 1 (47 bytes)
-`[2;1H`[48;2;0;0;0m`[38;2;0;255;255m`[5;mo`[25m
-
-Row 10 (90 bytes)
-`[11;21H`[48;2;0;0;128m`[38;2;0;255;255msome more text!!`[4m`[14Cunderlined this time`[24m
-
-Row 0 (107 bytes)
-`[1;1H`[48;2;0;0;0m`[38;2;255;255;255mHello`[5mWorld`[25m`[5Cnormaltexthere`[38;2;0;255;255m`[5m`[90CY`[25m
+[1;48H67979
 
