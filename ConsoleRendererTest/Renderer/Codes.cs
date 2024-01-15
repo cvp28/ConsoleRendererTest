@@ -11,11 +11,11 @@ public enum StyleCode : byte
 	None		= 0,
 	Bold		= 1,
 	Dim			= 2,
-	Italic		= 3,
-	Underlined	= 4,
-	Blink		= 5,
-	Inverted	= 7,
-	CrossedOut	= 9
+	Italic		= 4,
+	Underlined	= 8,
+	Blink		= 16,
+	Inverted	= 32,
+	CrossedOut	= 64
 }
 
 public enum ResetCode : byte
@@ -45,20 +45,17 @@ public static class CodeHelper
 		_						=> 0b00000000
 	};
 	
-	public static ResetCode GetResetCode(this StyleCode Code) => Code switch
+	public static byte GetCode(this StyleCode Style) => Style switch
 	{
-		StyleCode.Bold			=> ResetCode.NormalIntensity,
-		StyleCode.Dim			=> ResetCode.NormalIntensity,
+		StyleCode.Bold			=> 1,
+		StyleCode.Dim			=> 2,
+		StyleCode.Italic		=> 3,
+		StyleCode.Underlined	=> 4,
+		StyleCode.Blink			=> 5,
+		StyleCode.Inverted		=> 7,
+		StyleCode.CrossedOut	=> 9,
 
-		StyleCode.Italic		=> ResetCode.NotItalicised,
-		StyleCode.Underlined	=> ResetCode.NotUnderlined,
-
-		StyleCode.Blink			=> ResetCode.NotBlinking,
-
-		StyleCode.Inverted		=> ResetCode.NotInverted,
-		StyleCode.CrossedOut	=> ResetCode.NotCrossedOut,
-		
-		StyleCode.None			=> ResetCode.ResetAll,
-		_						=> ResetCode.ResetAll
+		StyleCode.None			=> 0,
+		_						=> 0
 	};
 }

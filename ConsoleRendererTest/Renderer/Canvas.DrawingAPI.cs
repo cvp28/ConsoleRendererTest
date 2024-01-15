@@ -4,16 +4,18 @@ using Codes;
 
 public partial class Canvas
 {
-	public void WriteAt(int X, int Y, string Text) => WriteAt(X, Y, Text, Color24.White, Color24.Black, StyleCode.None);
+	public Color24 DefaultForeground = Color24.White;
+	public Color24 DefaultBackground = Color24.Black;
+	
+	public void WriteAt(int X, int Y, string Text) => WriteAt(X, Y, Text, new Color24(255, 255, 255), new Color24(0, 0, 0), StyleCode.None);
 
-	public void WriteAt(int X, int Y, string Text, Color24 Foreground, Color24 Background, params StyleCode[] Style)
+	public void WriteAt(int X, int Y, string Text, Color24 Foreground, Color24 Background, StyleCode Style)
 	{
 		for (int i = 0; i < Text.Length; i++)
 		{
 			int Index = IX(X + i, Y);
-
-			byte RequestedStyle = Style.Length != 0 ? StyleHelper.PackStyle(Style) : (byte)0;
-			TryModifyPixel(Index, Text[i], Foreground, Background, RequestedStyle);
+			
+			TryModifyPixel(Index, Text[i], Foreground, Background, (byte) Style);
 		}
 	}
 

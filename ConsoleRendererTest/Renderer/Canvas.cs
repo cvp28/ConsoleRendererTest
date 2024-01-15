@@ -24,7 +24,7 @@ public unsafe partial class Canvas
 	/// <summary>
 	/// Creates a terminal canvas
 	/// </summary>
-	/// <param name="PresizeBuffers">Sizes some of the internally-used lists and buffers to a preset capacity before that capacity is needed (during Canvas construction), instead of dynamically when it IS needed</param>
+	/// <param name="PresizeBuffers">Sizes some of the internally-used lists and buffers to a preset capacity before that capacity is needed (during Canvas construction), instead of dynamically WHEN it is needed</param>
 	public Canvas(bool PresizeBuffers = false)
 	{
 		Width = Console.WindowWidth;
@@ -74,13 +74,9 @@ public unsafe partial class Canvas
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private int IX(int X, int Y) => (Y * Width + X) % CurrentFramePixels.Length; // This effectively wraps-around when input parameters go out-of-bounds
 	
-	private bool BufferDumpEnabled = false;
-	
 	public void DoBufferDump(int Quantity)
 	{
 		BufferDumpQuantity = Quantity;
-		BufferDumpEnabled = true;
-		
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
 	
@@ -302,7 +298,7 @@ public unsafe partial class Canvas
 		for (int i = 0; i < Count; i++)
 			if ((SetMask & Codes[i].GetMask()) >= 1)
 			{
-				Buffer.Append((byte)Codes[i]);
+				Buffer.Append(Codes[i].GetCode());
 				Buffer.Append(';');
 			}
 
@@ -361,35 +357,7 @@ public enum CanvasRenderMode
 }
 
 public static class StyleHelper
-{
-	public static byte MakeStyle(bool Bold, bool Dim, bool Italic, bool Underlined, bool Blink, bool Inverted, bool CrossedOut)
-	{
-		byte Temp = 0;
-		
-		if (Bold)
-			Temp |= 0b00000001;
-		
-		if (Dim)
-			Temp |= 0b00000010;
-		
-		if (Italic)
-			Temp |= 0b00000100;
-		
-		if (Underlined)
-			Temp |= 0b00001000;
-		
-		if (Blink)
-			Temp |= 0b00010000;
-		
-		if (Inverted)
-			Temp |= 0b00100000;
-		
-		if (CrossedOut)
-			Temp |= 0b01000000;
-		
-		return Temp;
-	}
-	
+{	
 	// Packs an array of stylecode enums into a single byte
 	public static byte PackStyle(params StyleCode[] StyleCodes)
 	{

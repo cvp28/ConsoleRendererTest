@@ -9,7 +9,10 @@ Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
 Console.Clear();
 
-var c = new Canvas();
+var c = new Canvas()
+{
+	
+};
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 
@@ -38,8 +41,8 @@ FPSTimer.Elapsed += (sender, args) =>
 
 FPSTimer.Start();
 
-var Width = Console.WindowWidth / 2;
-var Height = Console.WindowHeight / 2;
+var Width = Console.WindowWidth;
+var Height = Console.WindowHeight;
 
 while (true)
 {
@@ -56,17 +59,15 @@ while (true)
 	
 	// With just one write, it gets 7+ million iterations (not frames) per second in this loop
 	c.WriteAt(40, 0, $"FPS: {LastFPS}");
-
-	//	c.WriteAt(0, 0, "Hello");
-	//	c.WriteAt(5, 0, "World", Color24.White, Color24.Black, StyleCode.Blink, StyleCode.Inverted);
-	//	c.WriteAt(15, 0, "normaltexthere");
-	//	
-	//	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128));
-	//	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined, StyleCode.Italic);
-	//	
-	//	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), Color24.Black, StyleCode.Blink);
-	//	
-	//	c.WriteAt(Width, Height, "CHECK THIS SHIT OUT", new(255, 0, 0), new(0, 0, 0), StyleCode.Blink);//, StyleCode.Bold, StyleCode.Underlined, StyleCode.Inverted);
+	
+	c.WriteAt(0, 0, "Hello");
+	c.WriteAt(5, 0, "World", new(255,255,255), new(0,0,0), StyleCode.Blink | StyleCode.Inverted);
+	c.WriteAt(15, 0, "normaltexthere");
+	
+	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128), StyleCode.None);
+	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined | StyleCode.Italic);
+	
+	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), new(0,0,0), StyleCode.Blink);
 	
 	c.Flush();
 
