@@ -17,7 +17,7 @@ var c = new Canvas()
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
 
-// Input capture task
+// Worker task
 new Thread(delegate()
 {
 	while (Running)
@@ -64,12 +64,19 @@ while (Running)
 			case ConsoleKey.RightArrow:
 				X++;
 				break;
+			
+			case ConsoleKey.R:
+				c.Resize();
+				Width = Console.WindowWidth;
+				Height = Console.WindowHeight;
+				break;
 		}
 	}
 	
 	// With just one write, it gets 7+ million iterations (not frames) per second in this loop
 	//	c.WriteAt(40, 0,  "             ");
 	c.WriteAt(40, 0, $"FPS: {LastFPS}");
+	c.WriteAt(Width - 1, Height - 1, "H");
 	
 	//	c.WriteAt(0, 0, "Hello");
 	//	c.WriteAt(5, 0, "World", new(255,255,255), new(0,0,0), StyleCode.Blink | StyleCode.Inverted);

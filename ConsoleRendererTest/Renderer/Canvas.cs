@@ -155,6 +155,29 @@ public unsafe partial class Canvas
 	}
 	
 	/// <summary>
+	/// Resizes the screen buffer used by this canvas. Not guaranteed to hold onto data that gets clipped if new size is smaller.
+	/// </summary>
+	/// <param name="NewWidth">The new width</param>
+	/// <param name="NewHeight">The new height</param>
+	public void Resize(int NewWidth = 0, int NewHeight = 0)
+	{
+		if (NewWidth == 0)
+			NewWidth = Console.WindowWidth;
+		
+		if (NewHeight == 0)
+			NewHeight = Console.WindowHeight;
+		
+		Width = NewWidth;
+		Height = NewHeight;
+		
+		Console.Write("\u001b[3J");
+		Console.Clear();
+		
+		Array.Resize(ref CurrentFramePixels, NewWidth * NewHeight);
+		LastFramePixels = new Pixel[NewWidth * NewHeight];
+	}
+	
+	/// <summary>
 	/// <para>Takes two style masks: a current one and a new one and produces</para>
 	/// <br/>
 	/// <para>a reset mask (all of the styles that need to be reset)</para>
