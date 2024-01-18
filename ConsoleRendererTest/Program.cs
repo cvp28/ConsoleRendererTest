@@ -42,6 +42,9 @@ FPSTimer.Start();
 var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
 
+int X = 10;
+int Y = 15;
+
 while (Running)
 {
 	if (InputQueue.Any())
@@ -57,6 +60,10 @@ while (Running)
 				Running = false;
 				FPSTimer.Stop();
 				continue;
+			
+			case ConsoleKey.RightArrow:
+				X++;
+				break;
 		}
 	}
 	
@@ -73,7 +80,7 @@ while (Running)
 	//	
 	//	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), new(0,0,0), StyleCode.Blink);
 	//	
-	c.DrawBox(10, 15, 30, 12);
+	c.DrawBox(X, Y, 30, 12);
 	
 	c.Flush();
 

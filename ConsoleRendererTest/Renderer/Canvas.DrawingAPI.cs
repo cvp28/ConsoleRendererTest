@@ -21,27 +21,23 @@ public partial class Canvas
 	
 	public void DrawBox(int X, int Y, int Width, int Height, string Title = "")
 	{
-		// Draw top and bottom borders
-		for (int i = 0; i < Width; i++)
+		var TopLeftIndex = IX(X, Y);
+		var TopRightIndex = IX(X + Width - 1, Y);
+		var BottomLeftIndex = IX(X, Y + Height - 1);
+		var BottomRightIndex = IX(X + Width - 1, Y + Height - 1);
+		
+		TryModifyPixel(TopLeftIndex, '╭', Color24.White, Color24.Black, 0);
+		TryModifyPixel(TopRightIndex, '╮', Color24.White, Color24.Black, 0);
+		TryModifyPixel(BottomLeftIndex, '╰', Color24.White, Color24.Black, 0);
+		TryModifyPixel(BottomRightIndex, '╯', Color24.White, Color24.Black, 0);
+		
+		for (int i = 0; i < Width - 2; i++)
 		{
-			int NextTopIndex = IX(X + i, Y);
-			int NextBottomIndex = IX(X + i, Y + Height - 1);
+			var TopIndex = IX(X + 1 + i, Y);
+			var BottomIndex = IX(X + 1 + i, Y + Height - 1);
 			
-			if (i == 0)
-			{
-				TryModifyPixel(NextTopIndex, '╭', Color24.White, Color24.Black, 0);
-				TryModifyPixel(NextBottomIndex, '╰', Color24.White, Color24.Black, 0);
-			}
-			else if (i == Width - 1)
-			{
-				TryModifyPixel(NextTopIndex, '╮', Color24.White, Color24.Black, 0);
-				TryModifyPixel(NextBottomIndex, '╯', Color24.White, Color24.Black, 0);
-			}
-			else
-			{
-				TryModifyPixel(NextTopIndex, '─', Color24.White, Color24.Black, 0);
-				TryModifyPixel(NextBottomIndex, '─', Color24.White, Color24.Black, 0);
-			}
+			TryModifyPixel(TopIndex, '─', Color24.White, Color24.Black, 0);
+			TryModifyPixel(BottomIndex, '─', Color24.White, Color24.Black, 0);
 		}
 		
 		for (int i = 1; i < Height - 1; i++)
