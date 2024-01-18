@@ -109,19 +109,15 @@ public unsafe partial class Canvas
 	}
 	
 	private int LastIndex = 0;
-	private int LastY = 0;
 	private Pixel LastPixel;
-
-	// Only set to true at the start of the application
-	// (in which case LastPixel does not represent valid data that is actually on the screen)
 
 	private void RenderModifiedPixels()
 	{
 		if (ModifiedIndices.Count == 0)
 			return;
-
+		
 		ModifiedIndices.Sort();
-
+		
 		foreach (var i in ModifiedIndices.Span)
 		{
 			// Nifty little way of converting indices to coordinates
@@ -154,7 +150,6 @@ public unsafe partial class Canvas
 			
 			// Store this state for future reference
 			LastIndex = i;
-			LastY = Y;
 			LastPixel = CurrentPixel;
 		}
 	}
@@ -180,59 +175,12 @@ public unsafe partial class Canvas
 	private void AppendStyleTransitionSequence(byte ResetMask, byte SetMask)
 	{
 		Buffer.Append("\u001b[");
-
-		//	// Process reset mask
-		//	
-		//	if ((ResetMask & StyleCode.Bold.GetMask()) >= 1 || (ResetMask & StyleCode.Dim.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NormalIntensity};");
-		//	
-		//	if ((ResetMask & StyleCode.Italic.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NotItalicised};");
-		//	
-		//	if ((ResetMask & StyleCode.Underlined.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NotUnderlined};");
-		//	
-		//	if ((ResetMask & StyleCode.Blink.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NotBlinking};");
-		//	
-		//	if ((ResetMask & StyleCode.Inverted.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NotInverted};");
-		//	
-		//	if ((ResetMask & StyleCode.CrossedOut.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)ResetCode.NotCrossedOut};");
-		//	
-		//	// Now process set mask
-		//	
-		AppendResetSequence(ResetMask);
-
-		if (SetMask == 0)
-			goto end;
-
-		AppendSetSequence(SetMask);
-
-		//	
-		//	if ((SetMask & StyleCode.Bold.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Bold};");
-		//	
-		//	if ((SetMask & StyleCode.Dim.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Dim};");
-		//	
-		//	if ((SetMask & StyleCode.Italic.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Italic};");
-		//	
-		//	if ((SetMask & StyleCode.Underlined.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Underlined};");
-		//	
-		//	if ((SetMask & StyleCode.Blink.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Blink};");
-		//	
-		//	if ((SetMask & StyleCode.Inverted.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.Inverted};");
-		//	
-		//	if ((SetMask & StyleCode.CrossedOut.GetMask()) >= 1)
-		//		Buffer.Append($"{(byte)StyleCode.CrossedOut};");
-
-	end:
+		
+		if (ResetMask != 0)
+			AppendResetSequence(ResetMask);
+		
+		if (SetMask != 0)
+			AppendSetSequence(SetMask);
 
 		Buffer.Remove(Buffer.Length - 1, 1);
 		Buffer.Append('m');
@@ -277,9 +225,6 @@ public unsafe partial class Canvas
 			Buffer.Append((byte) ResetCode.NotCrossedOut);
 			Buffer.Append(';');
 		}
-		
-		//	Buffer.Remove(Buffer.Length - 1, 1);
-		//	Buffer.Append('m');
 	}
 	
 	/// <summary>
@@ -301,59 +246,7 @@ public unsafe partial class Canvas
 				Buffer.Append(Codes[i].GetCode());
 				Buffer.Append(';');
 			}
-
-		//	if ((SetMask & StyleCode.Bold.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Bold);
-		//		Buffer.Append(';');	
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.Dim.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Dim);
-		//		Buffer.Append(';');
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.Italic.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Italic);
-		//		Buffer.Append(';');
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.Underlined.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Underlined);
-		//		Buffer.Append(';');
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.Blink.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Blink);
-		//		Buffer.Append(';');
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.Inverted.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.Inverted);
-		//		Buffer.Append(';');
-		//	}
-		//	
-		//	if ((SetMask & StyleCode.CrossedOut.GetMask()) >= 1)
-		//	{
-		//		Buffer.Append((byte) StyleCode.CrossedOut);
-		//		Buffer.Append(';');
-		//	}
-		
-		//Buffer.Remove(Buffer.Length - 1, 0);
-		//Buffer.Append('m');
 	}
-}
-
-public enum CanvasRenderMode
-{
-	Parallel,
-	SynchronousRowIteration,
-	OnlyModifiedPixels
 }
 
 public static class StyleHelper

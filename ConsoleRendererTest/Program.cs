@@ -15,18 +15,16 @@ var c = new Canvas()
 };
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
+var Running = true;
 
 // Input capture task
 new Thread(delegate()
 {
-loop:
-	
-	if (!Console.KeyAvailable)
-		goto loop;
-	
-	InputQueue.Enqueue(Console.ReadKey(true));
-	
-	goto loop;
+	while (Running)
+	{
+		if (Console.KeyAvailable)
+			InputQueue.Enqueue(Console.ReadKey(true));
+	}
 }).Start();
 
 int CurrentFPS = 0;
@@ -44,7 +42,7 @@ FPSTimer.Start();
 var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
 
-while (true)
+while (Running)
 {
 	if (InputQueue.Any())
 	{
@@ -54,20 +52,28 @@ while (true)
 			case ConsoleKey.F1:
 				c.DoBufferDump(1);
 				break;
+			
+			case ConsoleKey.Escape:
+				Running = false;
+				FPSTimer.Stop();
+				continue;
 		}
 	}
 	
 	// With just one write, it gets 7+ million iterations (not frames) per second in this loop
+	//	c.WriteAt(40, 0,  "             ");
 	c.WriteAt(40, 0, $"FPS: {LastFPS}");
 	
-	c.WriteAt(0, 0, "Hello");
-	c.WriteAt(5, 0, "World", new(255,255,255), new(0,0,0), StyleCode.Blink | StyleCode.Inverted);
-	c.WriteAt(15, 0, "normaltexthere");
-	
-	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128), StyleCode.None);
-	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined | StyleCode.Italic);
-	
-	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), new(0,0,0), StyleCode.Blink);
+	//	c.WriteAt(0, 0, "Hello");
+	//	c.WriteAt(5, 0, "World", new(255,255,255), new(0,0,0), StyleCode.Blink | StyleCode.Inverted);
+	//	c.WriteAt(15, 0, "normaltexthere");
+	//	
+	//	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128), StyleCode.None);
+	//	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined | StyleCode.Italic);
+	//	
+	//	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), new(0,0,0), StyleCode.Blink);
+	//	
+	c.DrawBox(10, 15, 30, 12);
 	
 	c.Flush();
 
