@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace ConsoleRendererTest;
+namespace SharpCanvas.Interop;
 
 [StructLayout(LayoutKind.Sequential)]
 internal struct COORD

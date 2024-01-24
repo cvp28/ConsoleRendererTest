@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace ConsoleRendererTest;
+namespace SharpCanvas.Interop;
 
 internal unsafe static class Libc
 {

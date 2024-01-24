@@ -3,7 +3,8 @@ using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
 
-namespace ConsoleRendererTest;
+namespace SharpCanvas;
+using Interop;
 using Codes;
 
 public unsafe partial class Canvas
@@ -305,9 +306,9 @@ public static class StyleHelper
 		int Index = 0;
 		
 		for (int i = 0; i < 7; i++)
-			if ((PackedStyle & Globals.AllStyles[i].GetMask()) >= 1)
+			if ((PackedStyle & CodesGlobals.AllStyles[i].GetMask()) >= 1)
 			{
-				Dest[Index] = Globals.AllStyles[i];
+				Dest[Index] = CodesGlobals.AllStyles[i];
 				Index++;
 			}
 		

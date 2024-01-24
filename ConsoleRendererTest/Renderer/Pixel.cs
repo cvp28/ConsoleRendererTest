@@ -1,5 +1,5 @@
 ﻿
-namespace ConsoleRendererTest;
+namespace SharpCanvas;
 
 public struct Pixel
 {

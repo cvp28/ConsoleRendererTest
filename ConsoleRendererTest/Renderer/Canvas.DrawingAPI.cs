@@ -1,5 +1,5 @@
 ﻿
-namespace ConsoleRendererTest;
+namespace SharpCanvas;
 using Codes;
 
 public partial class Canvas

@@ -1,7 +1,7 @@
 ﻿
-namespace ConsoleRendererTest.Codes;
+namespace SharpCanvas.Codes;
 
-public static class Globals
+public static class CodesGlobals
 {
 	public static readonly StyleCode[] AllStyles = { StyleCode.Bold, StyleCode.Dim, StyleCode.Italic, StyleCode.Underlined, StyleCode.Blink, StyleCode.Inverted, StyleCode.CrossedOut };
 }

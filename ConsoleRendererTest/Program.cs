@@ -1,9 +1,7 @@
 ﻿using System.Collections.Concurrent;
-using System.Linq.Expressions;
 using System.Text;
 
-using ConsoleRendererTest;
-using ConsoleRendererTest.Codes;
+using SharpCanvas;
 
 Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;

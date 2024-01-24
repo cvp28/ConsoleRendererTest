@@ -1,7 +1,6 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.Text;
+﻿using System.Text;
 
-namespace ConsoleRendererTest;
+namespace SharpCanvas;
 
 public enum ColorLevel
 {
