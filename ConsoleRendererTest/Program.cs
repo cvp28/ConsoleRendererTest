@@ -7,10 +7,7 @@ Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
 Console.Clear();
 
-var c = new Canvas()
-{
-	
-};
+var c = new Canvas();
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
@@ -31,6 +28,7 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
+	Console.Title = $"FPS: {CurrentFPS}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
 };
@@ -40,8 +38,7 @@ FPSTimer.Start();
 var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
 
-int X = 10;
-int Y = 15;
+double shift = 0;
 
 while (Running)
 {
@@ -59,10 +56,6 @@ while (Running)
 				FPSTimer.Stop();
 				continue;
 			
-			case ConsoleKey.RightArrow:
-				X++;
-				break;
-			
 			case ConsoleKey.R:
 				c.Resize();
 				Width = Console.WindowWidth;
@@ -71,43 +64,23 @@ while (Running)
 		}
 	}
 	
-	// With just one write, it gets 7+ million iterations (not frames) per second in this loop
-	//	c.WriteAt(40, 0,  "             ");
-	c.WriteAt(40, 0, $"FPS: {LastFPS}");
-	c.WriteAt(Width - 1, Height - 1, "H");
+	DoRender();
 	
-	//	c.WriteAt(0, 0, "Hello");
-	//	c.WriteAt(5, 0, "World", new(255,255,255), new(0,0,0), StyleCode.Blink | StyleCode.Inverted);
-	//	c.WriteAt(15, 0, "normaltexthere");
-	//	
-	//	c.WriteAt(20, 10, "some more text!!", new(0, 255, 255), new(0, 0, 128), StyleCode.None);
-	//	c.WriteAt(50, 10, "underlined this time", new(0, 255, 255), new(0, 0, 128), StyleCode.Underlined | StyleCode.Italic);
-	//	
-	//	c.WriteAt(Width - 1, 0, "Yo", new(0, 255, 255), new(0,0,0), StyleCode.Blink);
-	//	
-	c.DrawBox(X, Y, 30, 12);
-	
-	c.Flush();
-
 	CurrentFPS++;
 }
 
-//Console.ReadKey(true);
-
-//	int Offset = 0;
-
-//	while (true)
-//	{
-//		c.WriteAt(2, 1 + Offset, "Hello, World");
-//		c.Flush();
-//	
-//		c.WriteAt(30, 10 + Offset, "more text", new(153, 0, 0), new(0, 255, 0));
-//		c.Flush();
-//		
-//		Offset++;
-//		Thread.Sleep(100);
-//		
-//		if (Console.KeyAvailable)
-//			break;
-//	}
-//	goto loop;
+void DoRender()
+{	
+	for (int x = 0; x < Width; x++)
+	{
+		double y = Height / 2 + 10 * Math.Sin(0.1 * x + shift);
+		
+		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0,0,0), SharpCanvas.Codes.StyleCode.None);
+	}
+	
+	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.1 * (Width - 1) + shift)));
+	
+	shift += 0.05;
+	
+	c.Flush();
+}

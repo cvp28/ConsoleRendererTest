@@ -6,17 +6,22 @@ using Collections.Pooled;
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using System.Security.Cryptography.X509Certificates;
 
 public unsafe partial class Canvas
 {
-	private int Width;
-	private int Height;
+	public int Width { get; private set; }
+	public int Height { get; private set; }
 	
-	private Pixel[] CurrentFramePixels;
-	private Pixel[] LastFramePixels;
-	private StringBuilder Buffer;
-
-	private PooledList<int> ModifiedIndices;
+	// General purpose pixel buffers
+	private HashSet<Pixel> PreviousPixelBuffer = new(1024);
+	private HashSet<Pixel> CurrentPixelBuffer = new(1024);
+	
+	// Constructed from reconciling the current and previous frames
+	private PooledList<Pixel> FinalPixelBuffer = new(1024, false);
+	
+	// Final string buffer containing writeable data
+	private StringBuilder FinalWriteBuffer = new(1024);
 	
 	private Action<byte[]> PlatformWriteStdout;
 
@@ -26,21 +31,12 @@ public unsafe partial class Canvas
 	/// Creates a terminal canvas
 	/// </summary>
 	/// <param name="PresizeBuffers">Sizes some of the internally-used lists and buffers to a preset capacity before that capacity is needed (during Canvas construction), instead of dynamically WHEN it is needed</param>
-	public Canvas(bool PresizeBuffers = false)
+	public Canvas()
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
 		
-		CurrentFramePixels = new Pixel[Width * Height];
-		LastFramePixels = new Pixel[Width * Height];
-		
-		Buffer = new(1024);
-		
-		if (PresizeBuffers)
-			ModifiedIndices = new(1024, false);
-		else
-			ModifiedIndices = [];
-		
+		#region Platform-specific stdout write delegates
 		if (OperatingSystem.IsWindows())
 		{
 			var Handle = Kernel32.GetStdHandle(-11);
@@ -58,6 +54,7 @@ public unsafe partial class Canvas
 					Libc.Write(1, ptr, (uint) Buffer.Length);
 			};
 		}
+		#endregion
 		
 		// Set up the screen state (set screen to full white on black and reset cursor to home)
 		Console.Write($"\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', Width * Height)}\u001b[;H");
@@ -65,6 +62,7 @@ public unsafe partial class Canvas
 		// Set up render state
 		LastPixel = new()
 		{
+			Index = 0,
 			Character = ' ',
 			Foreground = new(255,255,255),
 			Background = new(0,0,0),
@@ -73,19 +71,29 @@ public unsafe partial class Canvas
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private int IX(int X, int Y) => (Y * Width + X) % CurrentFramePixels.Length; // This effectively wraps-around when input parameters go out-of-bounds
+	private int ScreenIX(int X, int Y) => (Y * Width + X) % (Width * Height); // This effectively wraps-around when input parameters go out-of-bounds
 	
 	public void DoBufferDump(int Quantity)
 	{
 		BufferDumpQuantity = Quantity;
+		if (File.Exists(@".\BufferDump.txt"))
+			File.Delete(@".\BufferDump.txt");
+		
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
+	}
+	
+	public void Clear()
+	{
+		//	Array.Copy(ClearPixels, CurrentFramePixels, CurrentFramePixels.Length);
+		//	Array.Copy(ClearPixels, LastFramePixels, LastFramePixels.Length);
+		//	Console.Clear();
 	}
 	
 	public void Flush()
 	{
-		if (ModifiedIndices.Count != 0)
+		if (CurrentPixelBuffer.Count != 0)
 		{
-			Buffer.Clear();
+			ReconcileFrames();
 			RenderModifiedPixels();
 		}
 		else
@@ -94,48 +102,92 @@ public unsafe partial class Canvas
 		}
 		
 		// Draw step
-		if (Buffer.Length > 0)
-		{
+		if (FinalWriteBuffer.Length > 0)
+		{	
 			if (BufferDumpQuantity > 0)
 			{
-				File.AppendAllText(@"BufferDump.txt", Buffer.ToString() + "\n\n");
+				File.AppendAllText(@"BufferDump.txt", FinalWriteBuffer.ToString() + "\n\n");
 				BufferDumpQuantity--;
 			}
 			
-			byte[] FinalFrame = Encoding.UTF8.GetBytes(Buffer.ToString());
+			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
 			PlatformWriteStdout(FinalFrame);
-			ModifiedIndices.Clear();
+			
+			CurrentPixelBuffer.Clear();
+			FinalPixelBuffer.Clear();
+			FinalWriteBuffer.Clear();
+		}
+	}
+	
+	private void ReconcileFrames()
+	{
+		if (!PreviousPixelBuffer.Any())
+		{
+			//	If there is no data on the screen to diff against, submit all writes to the renderer
+			foreach (var p in CurrentPixelBuffer)
+			{
+				PreviousPixelBuffer.Add(p);
+				FinalPixelBuffer.Add(p);
+			}
+			return;
 		}
 		
+		// This shit is probably going to be mad slow but oh well
+		// We'll burn that bridge when we get to it
+		var DataToClear = PreviousPixelBuffer.Except(CurrentPixelBuffer);
+		var DataToDraw = CurrentPixelBuffer.Except(PreviousPixelBuffer);
+		
+		foreach (var d in DataToClear)
+		{
+			FinalPixelBuffer.Add(new()
+			{
+				Index = d.Index,
+				Character = ' ',
+				Foreground = new(255, 255, 255),
+				Background = new(0, 0, 0),
+				Style = 0
+			});
+		}
+		
+		FinalPixelBuffer.AddRange(DataToDraw);
+		
+		PreviousPixelBuffer.IntersectWith(CurrentPixelBuffer);
 	}
 	
 	private int LastIndex = 0;
 	private Pixel LastPixel;
-
+	
 	private void RenderModifiedPixels()
 	{
-		if (ModifiedIndices.Count == 0)
+		if (FinalPixelBuffer.Count == 0)
 			return;
 		
-		ModifiedIndices.Sort();
+		FinalPixelBuffer.Span.Sort((x, y) => x.Index.CompareTo(y.Index));
 		
-		foreach (var i in ModifiedIndices.Span)
+		for(int idx = 0; idx < FinalPixelBuffer.Span.Length; idx++)
 		{
+			var i = FinalPixelBuffer[idx].Index;
+			
 			// Nifty little way of converting indices to coordinates
 			(int Y, int X) = Math.DivRem(i, Width);
 			
-			var CurrentPixel = CurrentFramePixels[i];
+			var CurrentPixel = FinalPixelBuffer.Span[idx];
 			
 			// First, handle position
 			if (i - LastIndex != 1)
-				Buffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");
+			{
+				if (GetY(LastIndex) == GetY(i) && i > LastIndex)
+					FinalWriteBuffer.Append("\u001b[").Append(i - LastIndex - 1).Append("C");					// If indices are on same line and spaced further than 1 cell apart, shift right
+				else
+					FinalWriteBuffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");		// If anywhere else, set cursor pos
+			}
 			
 			// Then, handle colors and styling
 			if (CurrentPixel.Foreground != LastPixel.Foreground)
-				CurrentPixel.Foreground.AsForegroundVT(ref Buffer);
+				CurrentPixel.Foreground.AsForegroundVT(ref FinalWriteBuffer);
 			
 			if (CurrentPixel.Background != LastPixel.Background)
-				CurrentPixel.Background.AsBackgroundVT(ref Buffer);
+				CurrentPixel.Background.AsBackgroundVT(ref FinalWriteBuffer);
 			
 			if (CurrentPixel.Style != LastPixel.Style)
 			{
@@ -143,17 +195,15 @@ public unsafe partial class Canvas
 				AppendStyleTransitionSequence(ResetMask, SetMask);
 			}
 			
-			Buffer.Append(CurrentPixel.Character);
-			
-			// Write our modifications back to the array
-			CurrentFramePixels[i] = CurrentPixel;
-			LastFramePixels[i] = CurrentPixel;
+			FinalWriteBuffer.Append(CurrentPixel.Character);
 			
 			// Store this state for future reference
 			LastIndex = i;
 			LastPixel = CurrentPixel;
 		}
 	}
+	
+	private int GetY(int Index) => Index / Width;
 	
 	/// <summary>
 	/// Resizes the screen buffer used by this canvas. Not guaranteed to hold onto data that gets clipped if new size is smaller.
@@ -171,11 +221,7 @@ public unsafe partial class Canvas
 		Width = NewWidth;
 		Height = NewHeight;
 		
-		Console.Write("\u001b[3J");
 		Console.Clear();
-		
-		Array.Resize(ref CurrentFramePixels, NewWidth * NewHeight);
-		LastFramePixels = new Pixel[NewWidth * NewHeight];
 	}
 	
 	/// <summary>
@@ -198,7 +244,7 @@ public unsafe partial class Canvas
 	
 	private void AppendStyleTransitionSequence(byte ResetMask, byte SetMask)
 	{
-		Buffer.Append("\u001b[");
+		FinalWriteBuffer.Append("\u001b[");
 		
 		if (ResetMask != 0)
 			AppendResetSequence(ResetMask);
@@ -206,48 +252,48 @@ public unsafe partial class Canvas
 		if (SetMask != 0)
 			AppendSetSequence(SetMask);
 
-		Buffer.Remove(Buffer.Length - 1, 1);
-		Buffer.Append('m');
+		FinalWriteBuffer.Remove(FinalWriteBuffer.Length - 1, 1);
+		FinalWriteBuffer.Append('m');
 	}
 	
 	public void AppendResetSequence(byte ResetMask)
 	{
-		Buffer.Append("\u001b[");
+		FinalWriteBuffer.Append("\u001b[");
 		
 		if ((ResetMask & StyleCode.Bold.GetMask()) >= 1 || (ResetMask & StyleCode.Dim.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NormalIntensity);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NormalIntensity);
+			FinalWriteBuffer.Append(';');
 		}
 		
 		if ((ResetMask & StyleCode.Italic.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NotItalicised);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NotItalicised);
+			FinalWriteBuffer.Append(';');
 		}
 		
 		if ((ResetMask & StyleCode.Underlined.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NotUnderlined);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NotUnderlined);
+			FinalWriteBuffer.Append(';');
 		}
 		
 		if ((ResetMask & StyleCode.Blink.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NotBlinking);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NotBlinking);
+			FinalWriteBuffer.Append(';');
 		}
 		
 		if ((ResetMask & StyleCode.Inverted.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NotInverted);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NotInverted);
+			FinalWriteBuffer.Append(';');
 		}
 		
 		if ((ResetMask & StyleCode.CrossedOut.GetMask()) >= 1)
 		{
-			Buffer.Append((byte) ResetCode.NotCrossedOut);
-			Buffer.Append(';');
+			FinalWriteBuffer.Append((byte) ResetCode.NotCrossedOut);
+			FinalWriteBuffer.Append(';');
 		}
 	}
 	
@@ -258,7 +304,7 @@ public unsafe partial class Canvas
 	/// <returns>The resulting VT escape sequence</returns>
 	public void AppendSetSequence(byte SetMask)
 	{
-		Buffer.Append("\u001b[");
+		FinalWriteBuffer.Append("\u001b[");
 
 		Span<StyleCode> Codes = stackalloc StyleCode[8];
 
@@ -267,8 +313,8 @@ public unsafe partial class Canvas
 		for (int i = 0; i < Count; i++)
 			if ((SetMask & Codes[i].GetMask()) >= 1)
 			{
-				Buffer.Append(Codes[i].GetCode());
-				Buffer.Append(';');
+				FinalWriteBuffer.Append(Codes[i].GetCode());
+				FinalWriteBuffer.Append(';');
 			}
 	}
 }
