@@ -119,6 +119,8 @@ public unsafe partial class Canvas
 		}
 	}
 	
+	private int SortPixelsByIndices(Pixel x, Pixel y) => x.Index.CompareTo(y.Index);
+	
 	private void ReconcileFrames()
 	{
 		if (!PreviousPixelBuffer.Any())
@@ -134,24 +136,28 @@ public unsafe partial class Canvas
 		
 		// This shit is probably going to be mad slow but oh well
 		// We'll burn that bridge when we get to it
-		var DataToClear = PreviousPixelBuffer.Except(CurrentPixelBuffer);
-		var DataToDraw = CurrentPixelBuffer.Except(PreviousPixelBuffer);
+		var DataOnScreen = PreviousPixelBuffer.Intersect(CurrentPixelBuffer);
+		var DataToClear = PreviousPixelBuffer.ExceptBy(CurrentPixelBuffer.Select(p => p.Index), p => p.Index).ToList();
 		
-		foreach (var d in DataToClear)
+		DataToClear.Sort(SortPixelsByIndices);
+		for (int i = 0; i < DataToClear.Count; i++)
 		{
-			FinalPixelBuffer.Add(new()
-			{
-				Index = d.Index,
-				Character = ' ',
-				Foreground = new(255, 255, 255),
-				Background = new(0, 0, 0),
-				Style = 0
-			});
+			var temp = DataToClear[i];
+			
+			temp.Character = ' ';
+			temp.Foreground = new(255, 255, 255);
+			temp.Background = new(0, 0, 0);
+			temp.Style = 0;
+			
+			DataToClear[i] = temp;
 		}
 		
-		FinalPixelBuffer.AddRange(DataToDraw);
 		
-		PreviousPixelBuffer.IntersectWith(CurrentPixelBuffer);
+		FinalPixelBuffer.AddRange(DataToClear);
+		foreach (var p in CurrentPixelBuffer) FinalPixelBuffer.Add(p);
+		
+		PreviousPixelBuffer.Clear();
+		foreach (var p in DataOnScreen) PreviousPixelBuffer.Add(p);
 	}
 	
 	private int LastIndex = 0;
@@ -162,7 +168,7 @@ public unsafe partial class Canvas
 		if (FinalPixelBuffer.Count == 0)
 			return;
 		
-		FinalPixelBuffer.Span.Sort((x, y) => x.Index.CompareTo(y.Index));
+		//FinalPixelBuffer.Span.Sort((x, y) => x.Index.CompareTo(y.Index));
 		
 		for(int idx = 0; idx < FinalPixelBuffer.Span.Length; idx++)
 		{
@@ -206,7 +212,7 @@ public unsafe partial class Canvas
 	private int GetY(int Index) => Index / Width;
 	
 	/// <summary>
-	/// Resizes the screen buffer used by this canvas. Not guaranteed to hold onto data that gets clipped if new size is smaller.
+	/// Resizes the canvas.
 	/// </summary>
 	/// <param name="NewWidth">The new width</param>
 	/// <param name="NewHeight">The new height</param>
@@ -222,6 +228,7 @@ public unsafe partial class Canvas
 		Height = NewHeight;
 		
 		Console.Clear();
+		PreviousPixelBuffer.Clear();
 	}
 	
 	/// <summary>
