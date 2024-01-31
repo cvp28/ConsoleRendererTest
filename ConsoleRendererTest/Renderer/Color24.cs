@@ -50,4 +50,14 @@ public struct Color24
 	public static bool operator!=(Color24 first, Color24 second) => !Equals(first, second);
 	
 	public static bool Equals(Color24 x, Color24 y) => x.Red == y.Red && x.Green == y.Green && x.Blue == y.Blue;
+	
+	public override bool Equals(object obj)
+	{
+		if (obj is Color24 c)
+			return Equals(this, c);
+		else
+			return false;
+	}
+	
+	public override int GetHashCode() => HashCode.Combine(Red, Green, Blue);
 }

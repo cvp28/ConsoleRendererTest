@@ -83,10 +83,10 @@ while (Running)
 		}
 	}
 	
-	c.WriteAt(X, Y, "********");
 	//	c.Flush();
 
 	DoRender();
+	//c.WriteAt(X, Y, "********");
 
 	//Thread.Sleep(1);
 
@@ -96,12 +96,12 @@ while (Running)
 }
 
 void DoRender()
-{	
+{
 	for (int x = 0; x < Width; x++)
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 		
-		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0,0,0), StyleCode.Bold | StyleCode.Underlined);
+		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0,0,0), StyleCode.None);//, StyleCode.Bold | StyleCode.Underlined);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));

@@ -14,8 +14,11 @@ public unsafe partial class Canvas
 	public int Height { get; private set; }
 	
 	// General purpose pixel buffers
-	private HashSet<Pixel> PreviousPixelBuffer = new(1024);
-	private HashSet<Pixel> CurrentPixelBuffer = new(1024);
+	private HashSet<Pixel> OldPixels = new(1024);
+	private HashSet<Pixel> NewPixels = new(1024);
+	
+	private HashSet<Pixel> UpdatePixels = new(1024);				// Contains pixels which overwrite something currently on screen (contained in OldPixels)
+	private PooledList<Pixel> RedundantPixels = new(1024, false);	// Contains pixels which are currently present on the screen and will not be written
 	
 	// Constructed from reconciling the current and previous frames
 	private PooledList<Pixel> FinalPixelBuffer = new(1024, false);
@@ -91,15 +94,15 @@ public unsafe partial class Canvas
 	
 	public void Flush()
 	{
-		if (CurrentPixelBuffer.Count != 0)
+		if (!NewPixels.Any())
 		{
-			ReconcileFrames();
-			RenderModifiedPixels();
-		}
-		else
-		{
+			RedundantPixels.Clear();
+			UpdatePixels.Clear();
 			return;
 		}
+		
+		ReconcileFrames();
+		RenderModifiedPixels();
 		
 		// Draw step
 		if (FinalWriteBuffer.Length > 0)
@@ -113,8 +116,13 @@ public unsafe partial class Canvas
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
 			PlatformWriteStdout(FinalFrame);
 			
+			NewPixels.Clear();
+			
 			FinalPixelBuffer.Clear();
 			FinalWriteBuffer.Clear();
+			
+			RedundantPixels.Clear();
+			UpdatePixels.Clear();
 		}
 	}
 	
@@ -122,31 +130,27 @@ public unsafe partial class Canvas
 	
 	private void ReconcileFrames()
 	{
-		if (!PreviousPixelBuffer.Any())
+		if (!OldPixels.Any())
 		{
 			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in CurrentPixelBuffer)
+			foreach (var p in NewPixels)
 			{
-				PreviousPixelBuffer.Add(p);
+				OldPixels.Add(p);
 				FinalPixelBuffer.Add(p);
 			}
 			return;
 		}
 
 		static int IndexSelector(Pixel i) => i.Index;
-
-		var PreviousIndices = PreviousPixelBuffer.Select(IndexSelector);
-		var CurrentIndices = CurrentPixelBuffer.Select(IndexSelector);
-
-		var DataToKeep = PreviousPixelBuffer.Intersect(CurrentPixelBuffer).ToPooledList();
-		var DataToClear = PreviousPixelBuffer.ExceptBy(CurrentIndices, IndexSelector).ToPooledList();
-		var DataToWrite = CurrentPixelBuffer.ExceptBy(PreviousIndices, IndexSelector).ToPooledList();
-
-		CurrentPixelBuffer.Clear();
-
-		PreviousPixelBuffer.ExceptWith(DataToClear);				// Remove cleared data from screen state
-		foreach (var p in DataToWrite) PreviousPixelBuffer.Add(p);	// Add written data to screen state
-
+		
+		var DataToClear = OldPixels.Except(RedundantPixels).ToPooledList();	// Get all on-screen pixels that are to be cleared
+		
+		DataToClear = DataToClear.ExceptBy(UpdatePixels.Select(p => p.Index), IndexSelector).ToPooledList();	// Do NOT clear pixels that are being updated this frame
+		
+		OldPixels.Clear();
+		foreach (var p in RedundantPixels) OldPixels.Add(p);	// Add kept pixels
+		foreach (var p in NewPixels) OldPixels.Add(p);			// Add new pixels 
+		
 		for (int i = 0; i < DataToClear.Count; i++)
 		{
 			var temp = DataToClear[i];
@@ -163,10 +167,13 @@ public unsafe partial class Canvas
 
 			DataToClear[i] = temp;
 		}
-
-		FinalPixelBuffer.AddRange(DataToClear.Span);
-		FinalPixelBuffer.AddRange(DataToWrite.Span);
-
+		
+		FinalPixelBuffer.AddRange(DataToClear.Span);			// Add pixels to be cleared to render queue
+		//	FinalPixelBuffer.AddRange(RedundantPixels);
+		FinalPixelBuffer.AddRange(NewPixels);
+		
+		//CurrentPixelBuffer.Clear();
+		//PixelsToKeep.Clear
 	}
 	
 	private int LastIndex = 0;
@@ -237,7 +244,7 @@ public unsafe partial class Canvas
 		Height = NewHeight;
 		
 		Console.Clear();
-		PreviousPixelBuffer.Clear();
+		OldPixels.Clear();
 	}
 	
 	/// <summary>

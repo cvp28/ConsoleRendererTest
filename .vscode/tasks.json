@@ -6,11 +6,12 @@
 			"command": "dotnet",
 			"type": "process",
 			"args": [
-				"build",
+				"msbuild",
 				"${workspaceFolder}\\ConsoleRendererTest.sln",
-				"/property:GenerateFullPaths=true",
-				"/property:Configuration=Debug",
-				"/consoleloggerparameters:NoSummary;ForceNoAlign"
+				"-property:GenerateFullPaths=true",
+				"-property:Configuration=Debug",
+				"-maxCpuCount",
+				"-consoleloggerparameters:Summary;ForceNoAlign"
 			],
 			"problemMatcher": "$msCompile",
 			"group": {
@@ -23,11 +24,12 @@
 			"command": "dotnet",
 			"type": "process",
 			"args": [
-				"build",
+				"msbuild",
 				"${workspaceFolder}\\ConsoleRendererTest.sln",
-				"/property:GenerateFullPaths=true",
-				"/property:Configuration=Release",
-				"/consoleloggerparameters:NoSummary;ForceNoAlign"
+				"-property:GenerateFullPaths=true",
+				"-property:Configuration=Release",
+				"-maxCpuCount",
+				"-consoleloggerparameters:Summary;ForceNoAlign"
 			],
 			"problemMatcher": "$msCompile",
 			"group": {

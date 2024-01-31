@@ -2,6 +2,7 @@
 namespace SharpCanvas;
 
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography.X509Certificates;
 using Codes;
 
 public partial class Canvas
@@ -107,8 +108,14 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		//if (!PreviousPixelBuffer.Contains(NewPixel))
-			CurrentPixelBuffer.Add(NewPixel);
+		if (OldPixels.Contains(NewPixel))
+			NewPixel.Action = PixelAction.Skip;
+		else if (OldPixels.Any(p => p.Index == Index))
+			NewPixel.Action = PixelAction.Draw;
+		else
+			NewPixel.Action = PixelAction.Draw;
+		
+		FinalPixelBuffer.Add(NewPixel);
 	}
 	
 	/// <summary>
@@ -127,6 +134,6 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		CurrentPixelBuffer.Add(NewPixel);
+		NewPixels.Add(NewPixel);
 	}
 }

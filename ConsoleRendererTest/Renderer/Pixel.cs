@@ -13,9 +13,12 @@ public struct Pixel
 	
 	public byte Style;
 	
+	public PixelAction Action;
+	
 	public readonly bool Styled => Style != 0;
 
-	public static bool Equals(Pixel first, Pixel second) =>	first.Character == second.Character		&&
+	public static bool Equals(Pixel first, Pixel second) =>	first.Index == second.Index				&&
+															first.Character == second.Character		&&
 															first.Foreground == second.Foreground	&&
 															first.Background == second.Background	&&
 															first.Style == second.Style;
@@ -25,6 +28,23 @@ public struct Pixel
 																first.Foreground != second.Foreground	||
 																first.Background != second.Background	||
 																first.Style != second.Style;
+	
+	public override bool Equals(object obj)
+	{
+		if (obj is Pixel p)
+			return Equals(this, (Pixel) obj);
+		else
+			return false;
+	}
+	
+	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
+}
+
+public enum PixelAction
+{
+	Skip,		// Do not render
+	Clear,		// Currently on screen - to be cleared
+	Draw		// Not on screen - to be drawn
 }
 
 public struct Pixel8
