@@ -113,7 +113,6 @@ public unsafe partial class Canvas
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
 			PlatformWriteStdout(FinalFrame);
 			
-			CurrentPixelBuffer.Clear();
 			FinalPixelBuffer.Clear();
 			FinalWriteBuffer.Clear();
 		}
@@ -133,31 +132,41 @@ public unsafe partial class Canvas
 			}
 			return;
 		}
-		
-		// This shit is probably going to be mad slow but oh well
-		// We'll burn that bridge when we get to it
-		var DataOnScreen = PreviousPixelBuffer.Intersect(CurrentPixelBuffer);
-		var DataToClear = PreviousPixelBuffer.ExceptBy(CurrentPixelBuffer.Select(p => p.Index), p => p.Index).ToList();
-		
-		DataToClear.Sort(SortPixelsByIndices);
+
+		static int IndexSelector(Pixel i) => i.Index;
+
+		var PreviousIndices = PreviousPixelBuffer.Select(IndexSelector);
+		var CurrentIndices = CurrentPixelBuffer.Select(IndexSelector);
+
+		var DataToKeep = PreviousPixelBuffer.Intersect(CurrentPixelBuffer).ToPooledList();
+		var DataToClear = PreviousPixelBuffer.ExceptBy(CurrentIndices, IndexSelector).ToPooledList();
+		var DataToWrite = CurrentPixelBuffer.ExceptBy(PreviousIndices, IndexSelector).ToPooledList();
+
+		CurrentPixelBuffer.Clear();
+
+		PreviousPixelBuffer.ExceptWith(DataToClear);				// Remove cleared data from screen state
+		foreach (var p in DataToWrite) PreviousPixelBuffer.Add(p);	// Add written data to screen state
+
 		for (int i = 0; i < DataToClear.Count; i++)
 		{
 			var temp = DataToClear[i];
-			
+
 			temp.Character = ' ';
-			temp.Foreground = new(255, 255, 255);
-			temp.Background = new(0, 0, 0);
-			temp.Style = 0;
 			
+			if (temp.Background != Color24.Black)
+			{
+				temp.Foreground = Color24.White;
+				temp.Background = Color24.Black;
+			}
+
+			temp.Style = 0;
+
 			DataToClear[i] = temp;
 		}
-		
-		
-		FinalPixelBuffer.AddRange(DataToClear);
-		foreach (var p in CurrentPixelBuffer) FinalPixelBuffer.Add(p);
-		
-		PreviousPixelBuffer.Clear();
-		foreach (var p in DataOnScreen) PreviousPixelBuffer.Add(p);
+
+		FinalPixelBuffer.AddRange(DataToClear.Span);
+		FinalPixelBuffer.AddRange(DataToWrite.Span);
+
 	}
 	
 	private int LastIndex = 0;

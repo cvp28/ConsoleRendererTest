@@ -6,34 +6,6 @@ using SharpCanvas.Codes;
 
 Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
-Console.Clear();
-
-Pixel8 p = new()
-{
-	Character = 'H',
-	Foreground = 227,
-	Background = 192,
-	Style = 0b00110011
-};
-
-Console.WriteLine((char) p.Character);
-Console.WriteLine(p.Foreground);
-Console.WriteLine(p.Background);
-Console.WriteLine($"{p.Style:B8}");
-
-Console.ReadKey(true);
-
-p.Character = 'A';
-p.Foreground = 37;
-p.Background = 227;
-p.Style = 0b11001100;
-
-Console.WriteLine((char) p.Character);
-Console.WriteLine(p.Foreground);
-Console.WriteLine(p.Background);
-Console.WriteLine($"{p.Style:B8}");
-
-Console.ReadKey(true);
 
 var c = new Canvas();
 
@@ -111,13 +83,15 @@ while (Running)
 		}
 	}
 	
-	c.WriteAt(X, Y, "Some text");
+	c.WriteAt(X, Y, "********");
 	//	c.Flush();
-	
+
 	DoRender();
-	
+
 	//Thread.Sleep(1);
-	
+
+	c.Flush();
+
 	CurrentFPS++;
 }
 
@@ -127,7 +101,7 @@ void DoRender()
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 		
-		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0,0,0), StyleCode.None);
+		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0,0,0), StyleCode.Bold | StyleCode.Underlined);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));

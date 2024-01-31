@@ -107,7 +107,7 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		if (!PreviousPixelBuffer.Contains(NewPixel))
+		//if (!PreviousPixelBuffer.Contains(NewPixel))
 			CurrentPixelBuffer.Add(NewPixel);
 	}
 	
