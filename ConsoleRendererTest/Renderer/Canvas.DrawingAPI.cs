@@ -108,14 +108,16 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		if (OldPixels.Contains(NewPixel))
-			NewPixel.Action = PixelAction.Skip;
-		else if (OldPixels.Any(p => p.Index == Index))
-			NewPixel.Action = PixelAction.Draw;
-		else
-			NewPixel.Action = PixelAction.Draw;
+		// We are writing something to a location on screen
+		// Which, by nature, means that we should not clear this index
 		
-		FinalPixelBuffer.Add(NewPixel);
+		if (OldPixels.Contains(NewPixel))
+		{
+			ToKeep.Add(NewPixel);
+			return;
+		}
+		
+		ToDraw.Add(NewPixel);
 	}
 	
 	/// <summary>
@@ -134,6 +136,6 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		NewPixels.Add(NewPixel);
+		ToDraw.Add(NewPixel);
 	}
 }

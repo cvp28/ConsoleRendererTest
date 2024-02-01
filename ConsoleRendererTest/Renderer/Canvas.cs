@@ -15,10 +15,9 @@ public unsafe partial class Canvas
 	
 	// General purpose pixel buffers
 	private HashSet<Pixel> OldPixels = new(1024);
-	private HashSet<Pixel> NewPixels = new(1024);
 	
-	private HashSet<Pixel> UpdatePixels = new(1024);				// Contains pixels which overwrite something currently on screen (contained in OldPixels)
-	private PooledList<Pixel> RedundantPixels = new(1024, false);	// Contains pixels which are currently present on the screen and will not be written
+	private HashSet<Pixel> ToDraw = new(1024);				// Contains pixels which overwrite something currently on screen (contained in OldPixels)
+	private PooledList<Pixel> ToKeep = new(1024, false);	// Contains pixels which are currently present on the screen and will not be written
 	
 	// Constructed from reconciling the current and previous frames
 	private PooledList<Pixel> FinalPixelBuffer = new(1024, false);
@@ -27,13 +26,12 @@ public unsafe partial class Canvas
 	private StringBuilder FinalWriteBuffer = new(1024);
 	
 	private Action<byte[]> PlatformWriteStdout;
-
+	
 	public int BufferDumpQuantity = 0;
 	
 	/// <summary>
 	/// Creates a terminal canvas
 	/// </summary>
-	/// <param name="PresizeBuffers">Sizes some of the internally-used lists and buffers to a preset capacity before that capacity is needed (during Canvas construction), instead of dynamically WHEN it is needed</param>
 	public Canvas()
 	{
 		Width = Console.WindowWidth;
@@ -94,10 +92,11 @@ public unsafe partial class Canvas
 	
 	public void Flush()
 	{
-		if (!NewPixels.Any())
+		if (!ToDraw.Any())
 		{
-			RedundantPixels.Clear();
-			UpdatePixels.Clear();
+			ToKeep.Clear();
+			ToDraw.Clear();
+			IndicesToKeep.Clear();
 			return;
 		}
 		
@@ -116,24 +115,27 @@ public unsafe partial class Canvas
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
 			PlatformWriteStdout(FinalFrame);
 			
-			NewPixels.Clear();
 			
 			FinalPixelBuffer.Clear();
 			FinalWriteBuffer.Clear();
 			
-			RedundantPixels.Clear();
-			UpdatePixels.Clear();
+			IndicesToKeep.Clear();
+			ToKeep.Clear();
+			ToDraw.Clear();
 		}
 	}
 	
 	private int SortPixelsByIndices(Pixel x, Pixel y) => x.Index.CompareTo(y.Index);
+	
+	// Random important renderer-specific list #4256
+	private PooledList<int> IndicesToKeep = new(1024, false);
 	
 	private void ReconcileFrames()
 	{
 		if (!OldPixels.Any())
 		{
 			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in NewPixels)
+			foreach (var p in ToDraw)
 			{
 				OldPixels.Add(p);
 				FinalPixelBuffer.Add(p);
@@ -143,13 +145,11 @@ public unsafe partial class Canvas
 
 		static int IndexSelector(Pixel i) => i.Index;
 		
-		var DataToClear = OldPixels.Except(RedundantPixels).ToPooledList();	// Get all on-screen pixels that are to be cleared
-		
-		DataToClear = DataToClear.ExceptBy(UpdatePixels.Select(p => p.Index), IndexSelector).ToPooledList();	// Do NOT clear pixels that are being updated this frame
+		var DataToClear = OldPixels.ExceptBy(ToKeep.Select(IndexSelector), IndexSelector).ToPooledList();
 		
 		OldPixels.Clear();
-		foreach (var p in RedundantPixels) OldPixels.Add(p);	// Add kept pixels
-		foreach (var p in NewPixels) OldPixels.Add(p);			// Add new pixels 
+		foreach (var p in ToKeep) OldPixels.Add(p);		// Add kept pixels
+		foreach (var p in ToDraw) OldPixels.Add(p);		// Add new pixels
 		
 		for (int i = 0; i < DataToClear.Count; i++)
 		{
@@ -168,12 +168,10 @@ public unsafe partial class Canvas
 			DataToClear[i] = temp;
 		}
 		
-		FinalPixelBuffer.AddRange(DataToClear.Span);			// Add pixels to be cleared to render queue
-		//	FinalPixelBuffer.AddRange(RedundantPixels);
-		FinalPixelBuffer.AddRange(NewPixels);
+		//DataToClear.Sort(SortPixelsByIndices);
 		
-		//CurrentPixelBuffer.Clear();
-		//PixelsToKeep.Clear
+		FinalPixelBuffer.AddRange(DataToClear.Span);			// Add pixels to be cleared to render queue
+		FinalPixelBuffer.AddRange(ToDraw);
 	}
 	
 	private int LastIndex = 0;
@@ -184,7 +182,7 @@ public unsafe partial class Canvas
 		if (FinalPixelBuffer.Count == 0)
 			return;
 		
-		//FinalPixelBuffer.Span.Sort((x, y) => x.Index.CompareTo(y.Index));
+		//FinalPixelBuffer.Span.Sort(SortPixelsByIndices);
 		
 		for(int idx = 0; idx < FinalPixelBuffer.Span.Length; idx++)
 		{

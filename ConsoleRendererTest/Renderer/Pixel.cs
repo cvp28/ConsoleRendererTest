@@ -16,28 +16,48 @@ public struct Pixel
 	public PixelAction Action;
 	
 	public readonly bool Styled => Style != 0;
-
-	public static bool Equals(Pixel first, Pixel second) =>	first.Index == second.Index				&&
-															first.Character == second.Character		&&
-															first.Foreground == second.Foreground	&&
-															first.Background == second.Background	&&
-															first.Style == second.Style;
 	
-	// Slightly more efficient as there is a chance not all of these conditionals will need to be checked to return a result
-	public static bool NotEqual(Pixel first, Pixel second) =>	first.Character != second.Character		||
-																first.Foreground != second.Foreground	||
-																first.Background != second.Background	||
-																first.Style != second.Style;
+	//	public static bool Equals(Pixel first, Pixel second) =>	first.Index == second.Index				&&
+	//															first.Character == second.Character		&&
+	//															first.Foreground == second.Foreground	&&
+	//															first.Background == second.Background	&&
+	//															first.Style == second.Style;
+	//	
+	//	// Slightly more efficient as there is a chance not all of these conditionals will need to be checked to return a result
+	//	public static bool NotEqual(Pixel first, Pixel second) =>	first.Character != second.Character		||
+	//																first.Foreground != second.Foreground	||
+	//																first.Background != second.Background	||
+	//																first.Style != second.Style;
+	
+	public static bool operator ==(Pixel x, Pixel y) => x.Equals(y);
+	public static bool operator !=(Pixel x, Pixel y) => !x.Equals(y);
 	
 	public override bool Equals(object obj)
 	{
-		if (obj is Pixel p)
-			return Equals(this, (Pixel) obj);
-		else
-			return false;
+		//if (obj is Pixel p)
+			return GetHashCode() == ((Pixel) obj).GetHashCode();
+			//return Equals(this, (Pixel) obj);
+		//else
+		//	return false;
 	}
 	
-	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
+	private int _hash;
+	
+	// Mustache hash cache
+	private int HashCache
+	{
+		get
+		{
+			if (_hash == 0)
+				_hash = HashCode.Combine(Index, Character, Foreground, Background, Style);
+			
+			return _hash;
+		}
+		
+		set => _hash = value;
+	}
+	
+	public override int GetHashCode() => HashCache;
 }
 
 public enum PixelAction
