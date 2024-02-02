@@ -64,5 +64,5 @@ public struct Color24
 	// Mustache hash cache
 	private int HashCache;
 	
-	public override int GetHashCode() => HashCache;
+	public override int GetHashCode() => HashCode.Combine(Red, Green, Blue);
 }

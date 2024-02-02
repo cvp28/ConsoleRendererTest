@@ -13,8 +13,6 @@ public struct Pixel
 	
 	public byte Style;
 	
-	public PixelAction Action;
-	
 	public readonly bool Styled => Style != 0;
 	
 	//	public static bool Equals(Pixel first, Pixel second) =>	first.Index == second.Index				&&
@@ -57,15 +55,15 @@ public struct Pixel
 		set => _hash = value;
 	}
 	
-	public override int GetHashCode() => HashCache;
+	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
 }
 
-public enum PixelAction
-{
-	Skip,		// Do not render
-	Clear,		// Currently on screen - to be cleared
-	Draw		// Not on screen - to be drawn
-}
+//	public enum PixelAction
+//	{
+//		Skip,		// Do not render
+//		Clear,		// Currently on screen - to be cleared
+//		Draw		// Not on screen - to be drawn
+//	}
 
 public struct Pixel8
 {

@@ -6,7 +6,6 @@ using Collections.Pooled;
 namespace SharpCanvas;
 using Interop;
 using Codes;
-using System.Security.Cryptography.X509Certificates;
 
 public unsafe partial class Canvas
 {
@@ -14,10 +13,8 @@ public unsafe partial class Canvas
 	public int Height { get; private set; }
 	
 	// General purpose pixel buffers
-	private HashSet<Pixel> OldPixels = new(1024);
-	
-	private HashSet<Pixel> ToDraw = new(1024);				// Contains pixels which overwrite something currently on screen (contained in OldPixels)
-	private PooledList<Pixel> ToKeep = new(1024, false);	// Contains pixels which are currently present on the screen and will not be written
+	private PooledList<Pixel> OldPixels = new(1024);
+	private PooledList<Pixel> NewPixels = new(1024);
 	
 	// Constructed from reconciling the current and previous frames
 	private PooledList<Pixel> FinalPixelBuffer = new(1024, false);
@@ -92,15 +89,13 @@ public unsafe partial class Canvas
 	
 	public void Flush()
 	{
-		if (!ToDraw.Any())
-		{
-			ToKeep.Clear();
-			ToDraw.Clear();
-			IndicesToKeep.Clear();
+		if (!NewPixels.Any())
 			return;
-		}
 		
+		FinalPixelBuffer.Clear();
 		ReconcileFrames();
+		
+		FinalWriteBuffer.Clear();
 		RenderModifiedPixels();
 		
 		// Draw step
@@ -115,13 +110,7 @@ public unsafe partial class Canvas
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
 			PlatformWriteStdout(FinalFrame);
 			
-			
-			FinalPixelBuffer.Clear();
-			FinalWriteBuffer.Clear();
-			
-			IndicesToKeep.Clear();
-			ToKeep.Clear();
-			ToDraw.Clear();
+			NewPixels.Clear();
 		}
 	}
 	
@@ -135,43 +124,36 @@ public unsafe partial class Canvas
 		if (!OldPixels.Any())
 		{
 			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in ToDraw)
+			foreach (var p in NewPixels)
 			{
 				OldPixels.Add(p);
 				FinalPixelBuffer.Add(p);
 			}
 			return;
 		}
-
-		static int IndexSelector(Pixel i) => i.Index;
 		
-		var DataToClear = OldPixels.ExceptBy(ToKeep.Select(IndexSelector), IndexSelector).ToPooledList();
+		var ToClear = OldPixels;
+		var ToDraw = NewPixels;
+		//var ToKeep = NewPixels.Intersect(OldPixels).ToPooledList();
 		
-		OldPixels.Clear();
-		foreach (var p in ToKeep) OldPixels.Add(p);		// Add kept pixels
-		foreach (var p in ToDraw) OldPixels.Add(p);		// Add new pixels
-		
-		for (int i = 0; i < DataToClear.Count; i++)
+		for (int i = 0; i < ToClear.Span.Length; i++)
 		{
-			var temp = DataToClear[i];
-
+			var temp = ToClear[i];
 			temp.Character = ' ';
-			
-			if (temp.Background != Color24.Black)
-			{
-				temp.Foreground = Color24.White;
-				temp.Background = Color24.Black;
-			}
-
+			temp.Foreground = Color24.White;
+			temp.Background = Color24.Black;
 			temp.Style = 0;
-
-			DataToClear[i] = temp;
+			ToClear[i] = temp;
 		}
 		
-		//DataToClear.Sort(SortPixelsByIndices);
+		ToClear.Sort(SortPixelsByIndices);
+		ToDraw.Sort(SortPixelsByIndices);
 		
-		FinalPixelBuffer.AddRange(DataToClear.Span);			// Add pixels to be cleared to render queue
+		FinalPixelBuffer.AddRange(ToClear);
 		FinalPixelBuffer.AddRange(ToDraw);
+		
+		OldPixels.Clear();
+		OldPixels.AddRange(NewPixels);
 	}
 	
 	private int LastIndex = 0;

@@ -92,9 +92,9 @@ while (Running)
 	//	X--;
 	
 	//DoRender();
-	c.WriteAt(10, 10, "Some text");
 	
 	c.WriteAt(X, Y, "Other text", new(255, 0, 0), Color24.Black, StyleCode.None);
+	c.WriteAt(10, 10, "Some text");
 	
 	thing = !thing;
 	

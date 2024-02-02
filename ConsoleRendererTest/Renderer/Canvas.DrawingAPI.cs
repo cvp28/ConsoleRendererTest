@@ -2,7 +2,6 @@
 namespace SharpCanvas;
 
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography.X509Certificates;
 using Codes;
 
 public partial class Canvas
@@ -108,16 +107,8 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		// We are writing something to a location on screen
-		// Which, by nature, means that we should not clear this index
-		
-		if (OldPixels.Contains(NewPixel))
-		{
-			ToKeep.Add(NewPixel);
-			return;
-		}
-		
-		ToDraw.Add(NewPixel);
+		if (!NewPixels.Contains(NewPixel))
+			NewPixels.Add(NewPixel);
 	}
 	
 	/// <summary>
@@ -136,6 +127,6 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		ToDraw.Add(NewPixel);
+		NewPixels.Add(NewPixel);
 	}
 }
