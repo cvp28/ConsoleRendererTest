@@ -19,7 +19,6 @@ public struct Color24
 		Red = r;
 		Green = g;
 		Blue = b;
-		HashCache = HashCode.Combine(r, g, b);
 	}
 	
 	public void AsForegroundVT(ref StringBuilder sb)
@@ -60,9 +59,6 @@ public struct Color24
 		//else
 		//	return false;
 	}
-	
-	// Mustache hash cache
-	private int HashCache;
 	
 	public override int GetHashCode() => HashCode.Combine(Red, Green, Blue);
 }

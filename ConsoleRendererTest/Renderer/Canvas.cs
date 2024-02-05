@@ -6,16 +6,22 @@ using Collections.Pooled;
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using System.Reflection.Metadata.Ecma335;
+using System.Collections.Immutable;
 
 public unsafe partial class Canvas
 {
 	public int Width { get; private set; }
 	public int Height { get; private set; }
+
+	private int TotalCellCount;
 	
 	// General purpose pixel buffers
 	private PooledList<Pixel> OldPixels = new(1024);
-	private PooledList<Pixel> NewPixels = new(1024);
-	
+
+	// Contains updated indices for each new frame
+	private PooledDictionary<int, Pixel> IndexUpdates = new(1024);
+
 	// Constructed from reconciling the current and previous frames
 	private PooledList<Pixel> FinalPixelBuffer = new(1024, false);
 	
@@ -33,6 +39,8 @@ public unsafe partial class Canvas
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
+
+		TotalCellCount = Width * Height;
 		
 		#region Platform-specific stdout write delegates
 		if (OperatingSystem.IsWindows())
@@ -55,7 +63,7 @@ public unsafe partial class Canvas
 		#endregion
 		
 		// Set up the screen state (set screen to full white on black and reset cursor to home)
-		Console.Write($"\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', Width * Height)}\u001b[;H");
+		Console.Write($"\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', TotalCellCount)}\u001b[;H");
 		
 		// Set up render state
 		LastPixel = new()
@@ -69,7 +77,7 @@ public unsafe partial class Canvas
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private int ScreenIX(int X, int Y) => (Y * Width + X) % (Width * Height); // This effectively wraps-around when input parameters go out-of-bounds
+	private int ScreenIX(int X, int Y) => (Y * Width + X) % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
 	
 	public void DoBufferDump(int Quantity)
 	{
@@ -89,71 +97,79 @@ public unsafe partial class Canvas
 	
 	public void Flush()
 	{
-		if (!NewPixels.Any())
-			return;
-		
 		FinalPixelBuffer.Clear();
 		ReconcileFrames();
+		
+		if (FinalPixelBuffer.Count == 0)
+			return;
 		
 		FinalWriteBuffer.Clear();
 		RenderModifiedPixels();
 		
-		// Draw step
-		if (FinalWriteBuffer.Length > 0)
-		{	
-			if (BufferDumpQuantity > 0)
-			{
-				File.AppendAllText(@"BufferDump.txt", FinalWriteBuffer.ToString() + "\n\n");
-				BufferDumpQuantity--;
-			}
-			
-			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-			PlatformWriteStdout(FinalFrame);
-			
-			NewPixels.Clear();
+		if (BufferDumpQuantity > 0)
+		{
+			File.AppendAllText(@"BufferDump.txt", FinalWriteBuffer.ToString() + "\n\n");
+			BufferDumpQuantity--;
 		}
+			
+		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+		PlatformWriteStdout(FinalFrame);
 	}
 	
 	private int SortPixelsByIndices(Pixel x, Pixel y) => x.Index.CompareTo(y.Index);
 	
-	// Random important renderer-specific list #4256
-	private PooledList<int> IndicesToKeep = new(1024, false);
+	
 	
 	private void ReconcileFrames()
 	{
 		if (!OldPixels.Any())
 		{
 			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in NewPixels)
+			foreach (var p in IndexUpdates.Values)
 			{
 				OldPixels.Add(p);
 				FinalPixelBuffer.Add(p);
 			}
 			return;
 		}
-		
-		var ToClear = OldPixels;
-		var ToDraw = NewPixels;
-		//var ToKeep = NewPixels.Intersect(OldPixels).ToPooledList();
-		
+
+		// Notes:
+		// DONT SORT PIXELS EVER :)
+
+		var NewPixels = IndexUpdates.Values;
+
+		//	int IndexSelector(Pixel p) => p.Index;
+		//	
+		//	var OldIndices = OldPixels.Select(IndexSelector);
+		//	var NewIndices = NewPixels.Select(IndexSelector);
+
+		var ToSkip = OldPixels.Intersect(NewPixels);
+		var ToClear = OldPixels.Except(ToSkip).ToPooledList();
+		var ToDraw = NewPixels.Except(ToSkip);
+
 		for (int i = 0; i < ToClear.Span.Length; i++)
 		{
 			var temp = ToClear[i];
 			temp.Character = ' ';
-			temp.Foreground = Color24.White;
-			temp.Background = Color24.Black;
+
+			if (temp.Background != Color24.Black)
+			{
+				temp.Foreground = Color24.White;
+				temp.Background = Color24.Black;
+			}
+
 			temp.Style = 0;
 			ToClear[i] = temp;
 		}
-		
-		ToClear.Sort(SortPixelsByIndices);
-		ToDraw.Sort(SortPixelsByIndices);
-		
+
 		FinalPixelBuffer.AddRange(ToClear);
 		FinalPixelBuffer.AddRange(ToDraw);
 		
 		OldPixels.Clear();
-		OldPixels.AddRange(NewPixels);
+		OldPixels.AddRange(ToSkip);
+		OldPixels.AddRange(ToDraw);
+
+		IndexUpdates.Clear();
 	}
 	
 	private int LastIndex = 0;
@@ -161,11 +177,6 @@ public unsafe partial class Canvas
 	
 	private void RenderModifiedPixels()
 	{
-		if (FinalPixelBuffer.Count == 0)
-			return;
-		
-		//FinalPixelBuffer.Span.Sort(SortPixelsByIndices);
-		
 		for(int idx = 0; idx < FinalPixelBuffer.Span.Length; idx++)
 		{
 			var i = FinalPixelBuffer[idx].Index;
@@ -224,7 +235,9 @@ public unsafe partial class Canvas
 		Height = NewHeight;
 		
 		Console.Clear();
+
 		OldPixels.Clear();
+		IndexUpdates.Clear();
 	}
 	
 	/// <summary>

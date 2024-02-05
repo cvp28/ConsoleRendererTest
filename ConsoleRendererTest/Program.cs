@@ -7,6 +7,8 @@ using SharpCanvas.Codes;
 Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
 
+Console.ReadKey(true);
+
 var c = new Canvas();
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
@@ -39,10 +41,9 @@ var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
 
 int X = 10;
-int Y = 5;
+int Y = 2;
 
 double shift = 0;
-bool thing = true;
 
 while (Running)
 {
@@ -83,20 +84,9 @@ while (Running)
 				break;
 		}
 	}
-	
-	//	c.Flush();
-	
-	//if (thing)
-	//	X++;
-	//else
-	//	X--;
-	
-	//DoRender();
-	
-	c.WriteAt(X, Y, "Other text", new(255, 0, 0), Color24.Black, StyleCode.None);
-	c.WriteAt(10, 10, "Some text");
-	
-	thing = !thing;
+	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.None);
+	//c.WriteAt(10, 10, "Some text");
+	DoRender();
 	
 	//Thread.Sleep(1);
 	
@@ -105,20 +95,18 @@ while (Running)
 	CurrentFPS++;
 }
 
-
-
 void DoRender()
 {
 	for (int x = 0; x < Width; x++)
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
-		
-		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0,0,0), StyleCode.Bold | StyleCode.Underlined);
+
+		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0, 0, 0), StyleCode.Bold | StyleCode.Underlined);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));
 	
 	shift += 0.05;
 	
-	c.Flush();
+	//c.Flush();
 }

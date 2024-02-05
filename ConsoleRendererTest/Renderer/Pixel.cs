@@ -39,22 +39,6 @@ public struct Pixel
 		//	return false;
 	}
 	
-	private int _hash;
-	
-	// Mustache hash cache
-	private int HashCache
-	{
-		get
-		{
-			if (_hash == 0)
-				_hash = HashCode.Combine(Index, Character, Foreground, Background, Style);
-			
-			return _hash;
-		}
-		
-		set => _hash = value;
-	}
-	
 	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
 }
 

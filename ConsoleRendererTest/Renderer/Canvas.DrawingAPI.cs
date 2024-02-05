@@ -1,7 +1,7 @@
-﻿
+﻿using System.Runtime.CompilerServices;
+
 namespace SharpCanvas;
 
-using System.Runtime.CompilerServices;
 using Codes;
 
 public partial class Canvas
@@ -106,9 +106,22 @@ public partial class Canvas
 			Background = Background,
 			Style = StyleMask
 		};
-		
-		if (!NewPixels.Contains(NewPixel))
-			NewPixels.Add(NewPixel);
+
+		// If this space is not actually going to be visible, cull it
+		//	if (Character == ' ' && Background == Color24.Black)
+		//		return;
+
+		IndexUpdates[Index] = NewPixel;
+
+		//if (NewPixels.Any(p => p.Index == Index))
+		//{
+		//	NewPixels.Remove(NewPixels.First(p => p.Index == Index));
+		//	NewPixels.Add(NewPixel);
+		//	return;
+		//}
+		//
+		//if (!NewPixels.Contains(NewPixel))
+		//	NewPixels.Add(NewPixel);
 	}
 	
 	/// <summary>
@@ -127,6 +140,6 @@ public partial class Canvas
 			Style = StyleMask
 		};
 		
-		NewPixels.Add(NewPixel);
+		IndexUpdates[Index] = NewPixel;
 	}
 }
