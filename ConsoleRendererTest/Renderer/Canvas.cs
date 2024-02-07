@@ -15,8 +15,43 @@ public unsafe partial class Canvas
 
 	private int TotalCellCount => Width * Height;
 	
+	private bool _ConcurrentRenderingEnabled;
+	private readonly object _RendererLock = new();
+	
+	public bool ConcurrentRenderingEnabled
+	{
+		get => _ConcurrentRenderingEnabled;
+		
+		set
+		{
+			lock (_RendererLock)
+			{
+				_ConcurrentRenderingEnabled = value;
+				
+				Console.Clear();
+				
+				OldPixels.Clear();
+				IndexUpdates.Clear();
+				
+				if (value)
+				{
+					AsyncRenderTask.Wait();
+					AsyncPixelBuffer.Clear();
+					
+					RenderPixels = AsyncPixelBuffer;
+					FlushDelegate = ConcurrentFlush;
+				}
+				else
+				{
+					RenderPixels = DiffedPixels;
+					FlushDelegate = SynchronousFlush;
+				}
+			}
+		}
+	}
+	
 	// General purpose pixel buffers
-	private PooledList<Pixel> OldPixels = new(1024, false);
+	private HashSet<Pixel> OldPixels = new(1024);
 
 	// Contains updated indices for each new frame
 	private PooledDictionary<int, Pixel> IndexUpdates = new(1024);
@@ -24,17 +59,23 @@ public unsafe partial class Canvas
 	// Constructed from reconciling the current and previous frames
 	private PooledList<Pixel> DiffedPixels = new(1024, false);
 	
+	private PooledList<Pixel> AsyncPixelBuffer = new(1024, false);
+	
+	private PooledList<Pixel> RenderPixels;
+	
 	// Final string buffer containing writeable data
 	private StringBuilder FinalWriteBuffer = new(1024);
 
 	private Action<byte[]> PlatformWriteStdout;
+	private Action FlushDelegate;
 	
 	public int BufferDumpQuantity = 0;
 	
 	/// <summary>
-	/// Creates a terminal canvas
+	/// 
 	/// </summary>
-	public Canvas()
+	/// <param name="EnableConcurrentRendering">Enables concurrent executing of the Flush() method for improved renderer performance</param>
+	public Canvas(bool EnableConcurrentRendering = true)
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
@@ -55,7 +96,9 @@ public unsafe partial class Canvas
 			};
 		}
 		#endregion
-
+		
+		ConcurrentRenderingEnabled = EnableConcurrentRendering;
+		
 		InitScreen();
 	}
 
@@ -73,6 +116,30 @@ public unsafe partial class Canvas
 			Background = new(0, 0, 0),
 			Style = 0
 		};
+	}
+	
+	/// <summary>
+	/// Resizes the canvas.
+	/// </summary>
+	/// <param name="NewWidth">The new width</param>
+	/// <param name="NewHeight">The new height</param>
+	public void Resize(int NewWidth = 0, int NewHeight = 0)
+	{
+		if (NewWidth == 0)
+			NewWidth = Console.WindowWidth;
+		
+		if (NewHeight == 0)
+			NewHeight = Console.WindowHeight;
+		
+		Width = NewWidth;
+		Height = NewHeight;
+
+		Console.Clear();
+
+		OldPixels.Clear();
+		IndexUpdates.Clear();
+
+		InitScreen();
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -93,10 +160,29 @@ public unsafe partial class Canvas
 		//	Array.Copy(ClearPixels, LastFramePixels, LastFramePixels.Length);
 		//	Console.Clear();
 	}
+	
+	public void Flush() { lock(_RendererLock) FlushDelegate(); }
+	
+	private void SynchronousFlush()
+	{
+		if (!IndexUpdates.Any())
+			return;
 
-	private PooledList<Pixel> RenderPixels = new(1024, false);
+		DiffedPixels.Clear();
+		ReconcileFrames();
+		
+		if (DiffedPixels.Count == 0)
+			return;
+		
+		FinalWriteBuffer.Clear();
+		RenderModifiedPixels();
 
-	public void Flush()
+		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+
+		PlatformWriteStdout(FinalFrame);
+	}
+	
+	private void ConcurrentFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
@@ -134,8 +220,6 @@ public unsafe partial class Canvas
 
 	private Task AsyncRenderTask = Task.CompletedTask;
 	
-	//private int SortPixelsByIndices(Pixel x, Pixel y) => x.Index.CompareTo(y.Index);
-	
 	private void ReconcileFrames()
 	{
 		if (!OldPixels.Any())
@@ -161,7 +245,6 @@ public unsafe partial class Canvas
 		var ToDraw = NewPixels.Except(ToSkip);
 
 		foreach (var i in ToClear)
-		{
 			DiffedPixels.Add(new()
 			{
 				Index = i,
@@ -170,31 +253,56 @@ public unsafe partial class Canvas
 				Background = Color24.Black,
 				Style = 0
 			});
-		}
-
-		//for (int i = 0; i < ToClear.Count(); i++)
-		//{
-		//
-		//
-		//	//var temp = ToClear[i];
-		//	//temp.Character = ' ';
-		//	//
-		//	//if (temp.Background != Color24.Black)
-		//	//{
-		//	//	temp.Foreground = Color24.White;
-		//	//	temp.Background = Color24.Black;
-		//	//}
-		//	//
-		//	//temp.Style = 0;
-		//	//ToClear[i] = temp;
-		//}
-
-		//DiffedPixels.AddRange(ToClear);
+		
 		DiffedPixels.AddRange(ToDraw);
 		
 		OldPixels.Clear();
-		OldPixels.AddRange(ToSkip);
-		OldPixels.AddRange(ToDraw);
+		foreach (var p in ToSkip) OldPixels.Add(p);
+		foreach (var p in ToDraw) OldPixels.Add(p);
+
+		IndexUpdates.Clear();
+	}
+	
+	private void ReconcileFramesEx()
+	{
+		if (!OldPixels.Any())
+		{
+			//	If there is no data on the screen to diff against, submit all writes to the renderer
+			foreach (var p in IndexUpdates.Values)
+			{
+				OldPixels.Add(p);
+				DiffedPixels.Add(p);
+			}
+			return;
+		}
+		
+		// Notes:
+		// DONT SORT PIXELS EVER :)
+		
+		var NewPixels = new HashSet<Pixel>(IndexUpdates.Values);
+		
+		int IndexSelector(Pixel p) => p.Index;
+		OldPixels.UnionWith(NewPixels);
+		
+		
+		
+		var ToSkip = OldPixels.Intersect(NewPixels);
+		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
+		var ToDraw = NewPixels.Except(ToSkip);
+		
+		foreach (var i in ToClear)
+			DiffedPixels.Add(new()
+			{
+				Index = i,
+				Character = ' ',
+				Foreground = Color24.White,
+				Background = Color24.Black,
+				Style = 0
+			});
+		
+		DiffedPixels.AddRange(ToDraw);
+		
+		OldPixels.Clear();
 
 		IndexUpdates.Clear();
 	}
@@ -203,9 +311,9 @@ public unsafe partial class Canvas
 	
 	private void RenderModifiedPixels()
 	{
-		var buf = RenderPixels.Span;
+		var buf = RenderPixels;
 
-		for(int idx = 0; idx < buf.Length; idx++)
+		for(int idx = 0; idx < buf.Count; idx++)
 		{
 			var LastIndex = LastPixel.Index;
 			var CurrentIndex = buf[idx].Index;
@@ -247,30 +355,6 @@ public unsafe partial class Canvas
 	}
 	
 	private int GetY(int Index) => Index / Width;
-	
-	/// <summary>
-	/// Resizes the canvas.
-	/// </summary>
-	/// <param name="NewWidth">The new width</param>
-	/// <param name="NewHeight">The new height</param>
-	public void Resize(int NewWidth = 0, int NewHeight = 0)
-	{
-		if (NewWidth == 0)
-			NewWidth = Console.WindowWidth;
-		
-		if (NewHeight == 0)
-			NewHeight = Console.WindowHeight;
-		
-		Width = NewWidth;
-		Height = NewHeight;
-
-		Console.Clear();
-
-		OldPixels.Clear();
-		IndexUpdates.Clear();
-
-		InitScreen();
-	}
 	
 	/// <summary>
 	/// <para>Takes two style masks: a current one and a new one and produces</para>

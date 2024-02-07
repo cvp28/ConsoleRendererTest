@@ -84,9 +84,15 @@ while (Running)
 			case ConsoleKey.RightArrow:
 				X++;
 				break;
+			
+			case ConsoleKey.C:
+				c.ConcurrentRenderingEnabled = !c.ConcurrentRenderingEnabled;
+				break;
 		}
 	}
-
+	
+	c.WriteAt(0, 0, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
+	
 	//	c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 	//	c.WriteAt(10, 10, "Some text");
 	DoRender();
