@@ -21,6 +21,8 @@ new Thread(delegate()
 	{
 		if (Console.KeyAvailable)
 			InputQueue.Enqueue(Console.ReadKey(true));
+
+		Thread.Sleep(50);
 	}
 }).Start();
 
@@ -30,7 +32,7 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
-	Console.Title = $"FPS: {CurrentFPS}";
+	Console.Title = $"FPS: {CurrentFPS:N0}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
 };
@@ -84,11 +86,12 @@ while (Running)
 				break;
 		}
 	}
-	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.None);
-	//c.WriteAt(10, 10, "Some text");
+
+	//	c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
+	//	c.WriteAt(10, 10, "Some text");
 	DoRender();
 	
-	//Thread.Sleep(1);
+	//Thread.Sleep(10);
 	
 	c.Flush();
 	
@@ -101,12 +104,12 @@ void DoRender()
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 
-		c.WriteAt(x, (int) y, '*', new(255, 0, 0), new(0, 0, 0), StyleCode.Bold | StyleCode.Underlined);
+		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));
 	
-	shift += 0.05;
+	shift += 0.1;
 	
 	//c.Flush();
 }
