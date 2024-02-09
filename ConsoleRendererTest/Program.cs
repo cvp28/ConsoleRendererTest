@@ -93,9 +93,9 @@ while (Running)
 	
 	c.WriteAt(0, 0, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
 	
-	//	c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
-	//	c.WriteAt(10, 10, "Some text");
-	DoRender();
+	c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(0, 0, 0), StyleCode.None);//, StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
+	c.WriteAt(10, 10, "Some text");
+	//DoRender();
 	
 	//Thread.Sleep(10);
 	
