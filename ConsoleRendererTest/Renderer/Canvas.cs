@@ -43,6 +43,9 @@ public unsafe partial class Canvas
 				}
 				else
 				{
+					AsyncRenderTask.Wait();
+					AsyncPixelBuffer.Clear();
+					
 					RenderPixels = DiffedPixels;
 					FlushDelegate = SynchronousFlush;
 				}
@@ -209,15 +212,15 @@ public unsafe partial class Canvas
 		{
 			FinalWriteBuffer.Clear();
 			RenderModifiedPixels();
-
+			
 			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-
+			
 			PlatformWriteStdout(FinalFrame);
 
 			RenderPixels.Clear();
 		});
 	}
-
+	
 	private Task AsyncRenderTask = Task.CompletedTask;
 	
 	private void ReconcileFrames()
