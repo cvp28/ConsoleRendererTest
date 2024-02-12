@@ -93,10 +93,11 @@ while (Running)
 	
 	c.WriteAt(0, 0, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
 	
-	//	c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
-	//	c.WriteAt(10, 10, "Some text");
+	//c.WriteAt(10, 10, "Some text");
 	DoRender();
-	
+
+	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
+
 	//Thread.Sleep(10);
 	
 	c.Flush();
@@ -110,7 +111,7 @@ void DoRender()
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 
-		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);
+		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);//, StyleCode.Bold | StyleCode.Underlined);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));

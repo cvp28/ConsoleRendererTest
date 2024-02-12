@@ -51,7 +51,7 @@ public unsafe partial class Canvas
 	}
 	
 	// General purpose pixel buffers
-	private HashSet<Pixel> OldPixels = new(1024);
+	private PooledList<Pixel> OldPixels = new(1024, false);
 
 	// Contains updated indices for each new frame
 	private PooledDictionary<int, Pixel> IndexUpdates = new(1024);
@@ -240,6 +240,9 @@ public unsafe partial class Canvas
 
 		int IndexSelector(Pixel p) => p.Index;
 
+		//	Span<Pixel> OldPixelsCopy = stackalloc Pixel[OldPixels.Count];
+		//	OldPixels.CopyTo(OldPixelsCopy);
+
 		var ToSkip = OldPixels.Intersect(NewPixels);
 		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
 		var ToDraw = NewPixels.Except(ToSkip);
@@ -254,11 +257,13 @@ public unsafe partial class Canvas
 				Style = 0
 			});
 		
-		DiffedPixels.AddRange(ToDraw);
+		//DiffedPixels.AddRange(ToDraw);
 		
 		OldPixels.Clear();
-		foreach (var p in ToSkip) OldPixels.Add(p);
-		foreach (var p in ToDraw) OldPixels.Add(p);
+		OldPixels.AddRange(ToSkip);
+
+		//foreach (var p in ToSkip) OldPixels.Add(p);
+		foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
 
 		IndexUpdates.Clear();
 	}
@@ -276,13 +281,10 @@ public unsafe partial class Canvas
 			return;
 		}
 		
-		// Notes:
-		// DONT SORT PIXELS EVER :)
-		
 		var NewPixels = new HashSet<Pixel>(IndexUpdates.Values);
 		
 		int IndexSelector(Pixel p) => p.Index;
-		OldPixels.UnionWith(NewPixels);
+		//OldPixels.UnionWith(NewPixels);
 		
 		
 		
