@@ -245,12 +245,39 @@ public unsafe partial class Canvas
 
 		//	Span<Pixel> OldPixelsCopy = stackalloc Pixel[OldPixels.Count];
 		//	OldPixels.CopyTo(OldPixelsCopy);
-
+		
 		var ToSkip = OldPixels.Intersect(NewPixels);
+		//	var ToSkipIndices = ToSkip.Select(IndexSelector);
+		//	
+		//	for ( int i = 0; i < OldPixels.Span.Length; i++)		// Determine pixels to clear
+		//		if (!ToSkipIndices.Contains(OldPixels.Span[i].Index))
+		//			DiffedPixels.Add(new()
+		//			{
+		//				Index = OldPixels.Span[i].Index,
+		//				Character = ' ',
+		//				Foreground = Color24.White,
+		//				Background = Color24.Black,
+		//				Style = 0
+		//			});
+		//	
+		//	for (int i = 0; i < DiffedPixels.Span.Length; i++)		// Remove cleared pixels from screen state (DiffedPixels only contains the cleared pixels at this point so just use that)
+		//		OldPixels.Remove(DiffedPixels.Span[i]);
+		//	
+		//	// At this point, OldPixels only contains the skipped pixels
+		//	
+		//	// Now determine what to draw and add that to both OldPixels and DiffedPixels
+		//	foreach (var p in NewPixels)
+		//		if (!ToSkip.Contains(p))
+		//		{
+		//			OldPixels.Add(p);
+		//			DiffedPixels.Add(p);
+		//		}
+		
 		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
 		var ToDraw = NewPixels.Except(ToSkip);
-
+		
 		foreach (var i in ToClear)
+		{
 			DiffedPixels.Add(new()
 			{
 				Index = i,
@@ -259,13 +286,11 @@ public unsafe partial class Canvas
 				Background = Color24.Black,
 				Style = 0
 			});
-		
-		//DiffedPixels.AddRange(ToDraw);
+		}
 		
 		OldPixels.Clear();
 		OldPixels.AddRange(ToSkip);
-
-		//foreach (var p in ToSkip) OldPixels.Add(p);
+		
 		foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
 
 		IndexUpdates.Clear();
