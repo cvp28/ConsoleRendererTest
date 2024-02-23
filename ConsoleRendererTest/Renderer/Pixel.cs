@@ -2,7 +2,7 @@
 
 namespace SharpCanvas;
 
-public struct Pixel
+public struct Pixel : IComparable<Pixel>
 {
 	public int Index;
 	
@@ -21,6 +21,8 @@ public struct Pixel
 	public override bool Equals(object obj) => GetHashCode() == ((Pixel) obj).GetHashCode();
 	
 	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
+	
+	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());
 }
 
 //	public enum PixelAction

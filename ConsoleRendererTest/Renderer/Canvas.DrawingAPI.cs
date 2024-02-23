@@ -110,7 +110,7 @@ public partial class Canvas
 		// If this space is not actually going to be visible, cull it
 		//	if (Character == ' ' && Background == Color24.Black)
 		//		return;
-
+		
 		IndexUpdates[Index] = NewPixel;
 
 		//if (NewPixels.Any(p => p.Index == Index))

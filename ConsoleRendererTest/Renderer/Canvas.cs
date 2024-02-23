@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
-using Utf8StringInterpolation;
 
 namespace SharpCanvas;
 using Interop;
@@ -54,17 +53,20 @@ public unsafe partial class Canvas
 	}
 	
 	// General purpose pixel buffers
-	private PooledList<Pixel> OldPixels = new(1024, false);
+	private PooledSet<Pixel> OldPixels = new(ClearMode.Never);
 
 	// Contains updated indices for each new frame
-	private PooledDictionary<int, Pixel> IndexUpdates = new(1024);
+	private PooledDictionary<int, Pixel> IndexUpdates = [];
 
 	// Constructed from reconciling the current and previous frames
-	private PooledList<Pixel> DiffedPixels = new(1024, false);
+	private PooledList<Pixel> DiffedPixels = new(ClearMode.Never);
 	
-	private PooledList<Pixel> AsyncPixelBuffer = new(1024, false);
+	private PooledList<Pixel> AsyncPixelBuffer = new(ClearMode.Never);
 	
 	private PooledList<Pixel> RenderPixels;
+	
+	private Thread RenderThread;
+	private bool DoRender = false;
 	
 	// Final string buffer containing writeable data
 	private StringBuilder FinalWriteBuffer = new(1024);
@@ -101,6 +103,9 @@ public unsafe partial class Canvas
 		#endregion
 		
 		ConcurrentRenderingEnabled = EnableConcurrentRendering;
+		
+		RenderThread = new(RenderInternal);
+		RenderThread.Start();
 		
 		InitScreen();
 	}
@@ -170,7 +175,7 @@ public unsafe partial class Canvas
 	{
 		if (!IndexUpdates.Any())
 			return;
-
+		
 		DiffedPixels.Clear();
 		ReconcileFrames();
 		
@@ -190,7 +195,7 @@ public unsafe partial class Canvas
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
 			return;
-
+		
 		DiffedPixels.Clear();
 		ReconcileFrames();
 		
@@ -204,21 +209,82 @@ public unsafe partial class Canvas
 		//	}
 
 		// Wait for previous render to finish
-		AsyncRenderTask.Wait();
-
+		while (DoRender)
+			continue;
+		
+		// Submit current frame to the renderer
 		RenderPixels.AddRange(DiffedPixels.Span);
+		DoRender = true;
+		
+		//RenderPixels = DiffedPixels;
 
-		AsyncRenderTask = Task.Run(delegate
+		//	RenderPixels.AddRange(DiffedPixels.Span);
+		//	
+		//	AsyncRenderTask = Task.Run(delegate
+		//	{
+		//		FinalWriteBuffer.Clear();
+		//		RenderModifiedPixels();
+		//		
+		//		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+		//		
+		//		PlatformWriteStdout(FinalFrame);
+		//	
+		//		RenderPixels.Clear();
+		//	});
+	}
+	
+	private void RenderInternal()
+	{
+		
+	loop_start:
+		while (!DoRender)
+			continue;
+
+		FinalWriteBuffer.Clear();
+		RenderModifiedPixels();
+		
+		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+		
+		PlatformWriteStdout(FinalFrame);
+
+		RenderPixels.Clear();
+		
+		DoRender = false;
+		goto loop_start;
+	}
+	
+	private PooledList<(T Item, bool InReference)> FindDifferences<T>(HashSet<T> RefObjs, HashSet<T> DiffObjs, IComparer<T> Comparer)
+	{
+		var temp = new PooledList<(T, bool)>();
+		
+		using var refs  = RefObjs.GetEnumerator();
+		using var diffs = DiffObjs.GetEnumerator();
+		
+		bool hasNext = refs.MoveNext() && diffs.MoveNext();
+		
+		while (hasNext)
 		{
-			FinalWriteBuffer.Clear();
-			RenderModifiedPixels();
+			int comparison = Comparer.Compare(refs.Current, diffs.Current);
 			
-			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-			
-			PlatformWriteStdout(FinalFrame);
+			if (comparison == 0)
+			{
+				// insert code that emits the current element if equal elements should be kept
+				hasNext = refs.MoveNext() && diffs.MoveNext();
 
-			RenderPixels.Clear();
-		});
+			}
+			else if (comparison < 0)
+			{
+				temp.Add((refs.Current, true));
+				hasNext = refs.MoveNext();
+			}
+			else
+			{
+				temp.Add((diffs.Current, false));
+				hasNext = diffs.MoveNext();
+			}
+		}
+		
+		return temp;
 	}
 	
 	private Task AsyncRenderTask = Task.CompletedTask;
@@ -242,36 +308,8 @@ public unsafe partial class Canvas
 		var NewPixels = IndexUpdates.Values;
 
 		int IndexSelector(Pixel p) => p.Index;
-
-		//	Span<Pixel> OldPixelsCopy = stackalloc Pixel[OldPixels.Count];
-		//	OldPixels.CopyTo(OldPixelsCopy);
 		
-		var ToSkip = OldPixels.Intersect(NewPixels);
-		//	var ToSkipIndices = ToSkip.Select(IndexSelector);
-		//	
-		//	for ( int i = 0; i < OldPixels.Span.Length; i++)		// Determine pixels to clear
-		//		if (!ToSkipIndices.Contains(OldPixels.Span[i].Index))
-		//			DiffedPixels.Add(new()
-		//			{
-		//				Index = OldPixels.Span[i].Index,
-		//				Character = ' ',
-		//				Foreground = Color24.White,
-		//				Background = Color24.Black,
-		//				Style = 0
-		//			});
-		//	
-		//	for (int i = 0; i < DiffedPixels.Span.Length; i++)		// Remove cleared pixels from screen state (DiffedPixels only contains the cleared pixels at this point so just use that)
-		//		OldPixels.Remove(DiffedPixels.Span[i]);
-		//	
-		//	// At this point, OldPixels only contains the skipped pixels
-		//	
-		//	// Now determine what to draw and add that to both OldPixels and DiffedPixels
-		//	foreach (var p in NewPixels)
-		//		if (!ToSkip.Contains(p))
-		//		{
-		//			OldPixels.Add(p);
-		//			DiffedPixels.Add(p);
-		//		}
+		var ToSkip = OldPixels.IntersectBy(NewPixels.Select(IndexSelector), IndexSelector);
 		
 		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
 		var ToDraw = NewPixels.Except(ToSkip);
@@ -289,7 +327,7 @@ public unsafe partial class Canvas
 		}
 		
 		OldPixels.Clear();
-		OldPixels.AddRange(ToSkip);
+		OldPixels = ToSkip.ToPooledSet();
 		
 		foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
 
@@ -309,30 +347,93 @@ public unsafe partial class Canvas
 			return;
 		}
 		
+		var hOldPixels = new HashSet<Pixel>(OldPixels);
 		var NewPixels = new HashSet<Pixel>(IndexUpdates.Values);
 		
-		int IndexSelector(Pixel p) => p.Index;
-		//OldPixels.UnionWith(NewPixels);
+		//int IndexSelector(Pixel p) => p.Index;
 		
+		//	var refs  = OldPixels.ToImmutableArray().GetEnumerator();
+		//	var diffs = NewPixels.ToImmutableArray().GetEnumerator();
+		//	
+		//	bool hasNext = refs.MoveNext() && diffs.MoveNext();
+		//	
+		//	while (hasNext)
+		//	{
+		//		int comparison = Comparer<Pixel>.Default.Compare(refs.Current, diffs.Current);
+		//		
+		//		if (comparison == 0)
+		//		{
+		//			// insert code that emits the current element if equal elements should be kept
+		//			hasNext = refs.MoveNext() && diffs.MoveNext();
+		//	
+		//		}
+		//		else if (comparison < 0)
+		//		{
+		//			OldPixels.Remove(refs.Current);
+		//				
+		//			DiffedPixels.Add(new()
+		//			{
+		//				Index = refs.Current.Index,
+		//				Character = ' ',
+		//				Foreground = Color24.White,
+		//				Background = Color24.Black,
+		//				Style = 0
+		//			});
+		//			
+		//			hasNext = refs.MoveNext();
+		//		}
+		//		else
+		//		{
+		//			OldPixels.Add(diffs.Current);
+		//			DiffedPixels.Add(diffs.Current);
+		//			
+		//			hasNext = diffs.MoveNext();
+		//		}
+		//	}
 		
+		//	var diffs = FindDifferences2(hOldPixels, NewPixels, Comparer<Pixel>.Default);
+		//	
+		//	foreach (var p in diffs)
+		//		switch (p.InReference)
+		//		{
+		//			case false:
+		//				OldPixels.Add(p.Item);
+		//				DiffedPixels.Add(p.Item);
+		//				break;
+		//			
+		//			case true:
+		//				OldPixels.Remove(p.Item);
+		//				
+		//				DiffedPixels.Add(new()
+		//				{
+		//					Index = p.Item.Index,
+		//					Character = ' ',
+		//					Foreground = Color24.White,
+		//					Background = Color24.Black,
+		//					Style = 0
+		//				});
+		//				break;
+		//		}
+		//	
+		//	diffs.Dispose();
 		
-		var ToSkip = OldPixels.Intersect(NewPixels);
-		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
-		var ToDraw = NewPixels.Except(ToSkip);
-		
-		foreach (var i in ToClear)
-			DiffedPixels.Add(new()
-			{
-				Index = i,
-				Character = ' ',
-				Foreground = Color24.White,
-				Background = Color24.Black,
-				Style = 0
-			});
-		
-		DiffedPixels.AddRange(ToDraw);
-		
-		OldPixels.Clear();
+		//	var ToSkip = OldPixels.Intersect(NewPixels);
+		//	var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
+		//	var ToDraw = NewPixels.Except(ToSkip);
+		//	
+		//	foreach (var i in ToClear)
+		//		DiffedPixels.Add(new()
+		//		{
+		//			Index = i,
+		//			Character = ' ',
+		//			Foreground = Color24.White,
+		//			Background = Color24.Black,
+		//			Style = 0
+		//		});
+		//	
+		//	DiffedPixels.AddRange(ToDraw);
+		//	
+		//	OldPixels.Clear();
 
 		IndexUpdates.Clear();
 	}

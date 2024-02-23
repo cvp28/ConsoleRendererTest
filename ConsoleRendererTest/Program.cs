@@ -9,7 +9,10 @@ Console.OutputEncoding = Encoding.UTF8;
 
 Console.ReadKey(true);
 
-var c = new Canvas();
+var c = new Canvas()
+{
+	ConcurrentRenderingEnabled = false
+};
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
@@ -91,7 +94,7 @@ while (Running)
 		}
 	}
 	
-	c.WriteAt(0, 0, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
+	c.WriteAt(X, Y, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
 	
 	//c.WriteAt(10, 10, "Some text");
 	DoRender();
