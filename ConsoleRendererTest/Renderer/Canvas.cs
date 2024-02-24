@@ -169,7 +169,7 @@ public unsafe partial class Canvas
 		//	Console.Clear();
 	}
 	
-	public void Flush() { lock(_RendererLock) FlushDelegate(); }
+	public void Flush() { FlushDelegate(); }
 	
 	private void SynchronousFlush()
 	{
@@ -253,40 +253,6 @@ public unsafe partial class Canvas
 		goto loop_start;
 	}
 	
-	private PooledList<(T Item, bool InReference)> FindDifferences<T>(HashSet<T> RefObjs, HashSet<T> DiffObjs, IComparer<T> Comparer)
-	{
-		var temp = new PooledList<(T, bool)>();
-		
-		using var refs  = RefObjs.GetEnumerator();
-		using var diffs = DiffObjs.GetEnumerator();
-		
-		bool hasNext = refs.MoveNext() && diffs.MoveNext();
-		
-		while (hasNext)
-		{
-			int comparison = Comparer.Compare(refs.Current, diffs.Current);
-			
-			if (comparison == 0)
-			{
-				// insert code that emits the current element if equal elements should be kept
-				hasNext = refs.MoveNext() && diffs.MoveNext();
-
-			}
-			else if (comparison < 0)
-			{
-				temp.Add((refs.Current, true));
-				hasNext = refs.MoveNext();
-			}
-			else
-			{
-				temp.Add((diffs.Current, false));
-				hasNext = diffs.MoveNext();
-			}
-		}
-		
-		return temp;
-	}
-	
 	private Task AsyncRenderTask = Task.CompletedTask;
 	
 	private void ReconcileFrames()
@@ -346,82 +312,56 @@ public unsafe partial class Canvas
 			}
 			return;
 		}
+
+		// Notes:
+		// DONT SORT PIXELS EVER :)
+
+		var NewPixels = IndexUpdates.Values;
+		//using var hNewPixels = new PooledSet<Pixel>(NewPixels);
+
+		int IndexSelector(Pixel p) => p.Index;
+
+		var temp = new PooledSet<Pixel>();
+
+		var opEnumerator = OldPixels.GetEnumerator();
+		var npEnumerator = NewPixels.GetEnumerator();
 		
-		var hOldPixels = new HashSet<Pixel>(OldPixels);
-		var NewPixels = new HashSet<Pixel>(IndexUpdates.Values);
-		
-		//int IndexSelector(Pixel p) => p.Index;
-		
-		//	var refs  = OldPixels.ToImmutableArray().GetEnumerator();
-		//	var diffs = NewPixels.ToImmutableArray().GetEnumerator();
+		while (opEnumerator.MoveNext())
+		{
+			if (NewPixels.Contains(opEnumerator.Current))
+			{
+				temp.Add(opEnumerator.Current);
+				continue;
+			}
+			
+			DiffedPixels.Add(new()
+			{
+				Index = opEnumerator.Current.Index,
+				Character = ' ',
+				Foreground = Color24.White,
+				Background = Color24.Black,
+				Style = 0
+			});
+		}
+
+		while (npEnumerator.MoveNext())
+		{
+			if (!OldPixels.Contains(npEnumerator.Current))
+				DiffedPixels.Add(npEnumerator.Current);
+			
+			temp.Add(npEnumerator.Current);
+		}
+
+		//	//var ToSkip = OldPixels.IntersectBy(NewPixels.Select(IndexSelector), IndexSelector);
 		//	
-		//	bool hasNext = refs.MoveNext() && diffs.MoveNext();
+		//	//OldPixels.IntersectWith(hNewPixels);
+		//	var ToDraw = NewPixels.Except(OldPixels);
 		//	
-		//	while (hasNext)
+		//	//	var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
+		//	//	var ToDraw = NewPixels.Except(ToSkip);
+		//	
+		//	foreach (var i in )
 		//	{
-		//		int comparison = Comparer<Pixel>.Default.Compare(refs.Current, diffs.Current);
-		//		
-		//		if (comparison == 0)
-		//		{
-		//			// insert code that emits the current element if equal elements should be kept
-		//			hasNext = refs.MoveNext() && diffs.MoveNext();
-		//	
-		//		}
-		//		else if (comparison < 0)
-		//		{
-		//			OldPixels.Remove(refs.Current);
-		//				
-		//			DiffedPixels.Add(new()
-		//			{
-		//				Index = refs.Current.Index,
-		//				Character = ' ',
-		//				Foreground = Color24.White,
-		//				Background = Color24.Black,
-		//				Style = 0
-		//			});
-		//			
-		//			hasNext = refs.MoveNext();
-		//		}
-		//		else
-		//		{
-		//			OldPixels.Add(diffs.Current);
-		//			DiffedPixels.Add(diffs.Current);
-		//			
-		//			hasNext = diffs.MoveNext();
-		//		}
-		//	}
-		
-		//	var diffs = FindDifferences2(hOldPixels, NewPixels, Comparer<Pixel>.Default);
-		//	
-		//	foreach (var p in diffs)
-		//		switch (p.InReference)
-		//		{
-		//			case false:
-		//				OldPixels.Add(p.Item);
-		//				DiffedPixels.Add(p.Item);
-		//				break;
-		//			
-		//			case true:
-		//				OldPixels.Remove(p.Item);
-		//				
-		//				DiffedPixels.Add(new()
-		//				{
-		//					Index = p.Item.Index,
-		//					Character = ' ',
-		//					Foreground = Color24.White,
-		//					Background = Color24.Black,
-		//					Style = 0
-		//				});
-		//				break;
-		//		}
-		//	
-		//	diffs.Dispose();
-		
-		//	var ToSkip = OldPixels.Intersect(NewPixels);
-		//	var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
-		//	var ToDraw = NewPixels.Except(ToSkip);
-		//	
-		//	foreach (var i in ToClear)
 		//		DiffedPixels.Add(new()
 		//		{
 		//			Index = i,
@@ -430,11 +370,11 @@ public unsafe partial class Canvas
 		//			Background = Color24.Black,
 		//			Style = 0
 		//		});
+		//	}
 		//	
-		//	DiffedPixels.AddRange(ToDraw);
-		//	
-		//	OldPixels.Clear();
+		//	foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
 
+		OldPixels = temp;
 		IndexUpdates.Clear();
 	}
 	

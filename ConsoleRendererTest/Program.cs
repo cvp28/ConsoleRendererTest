@@ -9,10 +9,7 @@ Console.OutputEncoding = Encoding.UTF8;
 
 Console.ReadKey(true);
 
-var c = new Canvas()
-{
-	ConcurrentRenderingEnabled = false
-};
+var c = new Canvas();
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
@@ -25,7 +22,7 @@ new Thread(delegate()
 		if (Console.KeyAvailable)
 			InputQueue.Enqueue(Console.ReadKey(true));
 
-		Thread.Sleep(50);
+		Thread.Sleep(100);
 	}
 }).Start();
 
