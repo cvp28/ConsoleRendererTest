@@ -6,6 +6,7 @@ using Collections.Pooled;
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using ConsoleRendererTest;
 
 public unsafe partial class Canvas
 {
@@ -14,65 +15,19 @@ public unsafe partial class Canvas
 
 	private int TotalCellCount => Width * Height;
 	
-	private bool _ConcurrentRenderingEnabled;
-	private readonly object _RendererLock = new();
-	
-	public bool ConcurrentRenderingEnabled
-	{
-		get => _ConcurrentRenderingEnabled;
-		
-		set
-		{
-			lock (_RendererLock)
-			{
-				_ConcurrentRenderingEnabled = value;
-				
-				Console.Clear();
-				
-				OldPixels.Clear();
-				IndexUpdates.Clear();
-				
-				if (value)
-				{
-					AsyncRenderTask.Wait();
-					AsyncPixelBuffer.Clear();
-					
-					RenderPixels = AsyncPixelBuffer;
-					FlushDelegate = ConcurrentFlush;
-				}
-				else
-				{
-					AsyncRenderTask.Wait();
-					AsyncPixelBuffer.Clear();
-					
-					RenderPixels = DiffedPixels;
-					FlushDelegate = SynchronousFlush;
-				}
-			}
-		}
-	}
-	
 	// General purpose pixel buffers
 	private PooledSet<Pixel> OldPixels = new(ClearMode.Never);
 
 	// Contains updated indices for each new frame
-	private PooledDictionary<int, Pixel> IndexUpdates = [];
-
-	// Constructed from reconciling the current and previous frames
-	private PooledList<Pixel> DiffedPixels = new(ClearMode.Never);
-	
-	private PooledList<Pixel> AsyncPixelBuffer = new(ClearMode.Never);
-	
-	private PooledList<Pixel> RenderPixels;
+	private PooledDictionary<int, Pixel> IndexUpdates = new(ClearMode.Never);
 	
 	private Thread RenderThread;
-	private bool DoRender = false;
+	public bool DoRender = false;
 	
 	// Final string buffer containing writeable data
 	private StringBuilder FinalWriteBuffer = new(1024);
 
 	private Action<byte[]> PlatformWriteStdout;
-	private Action FlushDelegate;
 	
 	public int BufferDumpQuantity = 0;
 	
@@ -101,8 +56,6 @@ public unsafe partial class Canvas
 			};
 		}
 		#endregion
-		
-		ConcurrentRenderingEnabled = EnableConcurrentRendering;
 		
 		RenderThread = new(RenderInternal);
 		RenderThread.Start();
@@ -169,26 +122,10 @@ public unsafe partial class Canvas
 		//	Console.Clear();
 	}
 	
-	public void Flush() { FlushDelegate(); }
+	public CanvasBufferProvider Buffers = new();
+	private readonly object _RenderLock = new();
 	
-	private void SynchronousFlush()
-	{
-		if (!IndexUpdates.Any())
-			return;
-		
-		DiffedPixels.Clear();
-		ReconcileFrames();
-		
-		if (DiffedPixels.Count == 0)
-			return;
-		
-		FinalWriteBuffer.Clear();
-		RenderModifiedPixels();
-
-		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-
-		PlatformWriteStdout(FinalFrame);
-	}
+	public void Flush() { ConcurrentFlush(); }
 	
 	private void ConcurrentFlush()
 	{
@@ -196,12 +133,18 @@ public unsafe partial class Canvas
 		if (!IndexUpdates.Any())
 			return;
 		
-		DiffedPixels.Clear();
-		ReconcileFrames();
+		Buffers.ClearMainThreadBuffer();
+		ReconcileFramesEx();
 		
-		if (DiffedPixels.Count == 0)
+		if (!Buffers.MainThreadBuffer.Any())
+		{
+			lock (_RenderLock)
+			{
+				Buffers.Swap();
+			}
 			return;
-
+		}
+		
 		//	if (BufferDumpQuantity > 0)
 		//	{
 		//		File.AppendAllText(@"BufferDump.txt", FinalWriteBuffer.ToString() + "\n\n");
@@ -209,12 +152,11 @@ public unsafe partial class Canvas
 		//	}
 
 		// Wait for previous render to finish
-		while (DoRender)
-			continue;
-		
-		// Submit current frame to the renderer
-		RenderPixels.AddRange(DiffedPixels.Span);
-		DoRender = true;
+		lock (_RenderLock)
+		{
+			Buffers.Swap();
+			DoRender = true;
+		}
 		
 		//RenderPixels = DiffedPixels;
 
@@ -239,21 +181,25 @@ public unsafe partial class Canvas
 	loop_start:
 		while (!DoRender)
 			continue;
-
-		FinalWriteBuffer.Clear();
-		RenderModifiedPixels();
 		
-		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+		lock (_RenderLock)
+		{
+			FinalWriteBuffer.Clear();
+			RenderModifiedPixels();
+			
+			byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+			
+			//Console.Write(FinalWriteBuffer.ToString());
+			
+			PlatformWriteStdout(FinalFrame);
+			
+			Buffers.ClearRenderThreadBuffer();
+			
+			DoRender = false;
+		}
 		
-		PlatformWriteStdout(FinalFrame);
-
-		RenderPixels.Clear();
-		
-		DoRender = false;
 		goto loop_start;
 	}
-	
-	private Task AsyncRenderTask = Task.CompletedTask;
 	
 	private void ReconcileFrames()
 	{
@@ -263,7 +209,7 @@ public unsafe partial class Canvas
 			foreach (var p in IndexUpdates.Values)
 			{
 				OldPixels.Add(p);
-				DiffedPixels.Add(p);
+				Buffers.MainThreadBuffer.Add(p);
 			}
 			return;
 		}
@@ -277,12 +223,15 @@ public unsafe partial class Canvas
 		
 		var ToSkip = OldPixels.IntersectBy(NewPixels.Select(IndexSelector), IndexSelector);
 		
-		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
-		var ToDraw = NewPixels.Except(ToSkip);
+		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector)).ToPooledList();
+		var ToDraw = NewPixels.Except(ToSkip).ToPooledList();
 		
-		foreach (var i in ToClear)
+		//	var clear = ToClear.ToPooledList();
+		//	var draw = ToDraw.ToPooledList();
+		
+		foreach (var i in ToClear.Span)
 		{
-			DiffedPixels.Add(new()
+			Buffers.MainThreadBuffer.Add(new()
 			{
 				Index = i,
 				Character = ' ',
@@ -295,8 +244,11 @@ public unsafe partial class Canvas
 		OldPixels.Clear();
 		OldPixels = ToSkip.ToPooledSet();
 		
-		foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
-
+		foreach (var p in ToDraw.Span) { OldPixels.Add(p); Buffers.MainThreadBuffer.Add(p); }
+		
+		//	ToClear.Dispose();
+		//	ToDraw.Dispose();
+		
 		IndexUpdates.Clear();
 	}
 	
@@ -308,7 +260,7 @@ public unsafe partial class Canvas
 			foreach (var p in IndexUpdates.Values)
 			{
 				OldPixels.Add(p);
-				DiffedPixels.Add(p);
+				Buffers.MainThreadBuffer.Add(p);
 			}
 			return;
 		}
@@ -317,24 +269,24 @@ public unsafe partial class Canvas
 		// DONT SORT PIXELS EVER :)
 
 		var NewPixels = IndexUpdates.Values;
-		//using var hNewPixels = new PooledSet<Pixel>(NewPixels);
+		using var hNewPixels = new PooledSet<Pixel>(NewPixels);
 
 		int IndexSelector(Pixel p) => p.Index;
 
-		var temp = new PooledSet<Pixel>();
+		var temp = new PooledSet<Pixel>(ClearMode.Never);
 
 		var opEnumerator = OldPixels.GetEnumerator();
-		var npEnumerator = NewPixels.GetEnumerator();
+		var npEnumerator = hNewPixels.GetEnumerator();
 		
 		while (opEnumerator.MoveNext())
 		{
-			if (NewPixels.Contains(opEnumerator.Current))
+			if (hNewPixels.Contains(opEnumerator.Current))
 			{
 				temp.Add(opEnumerator.Current);
 				continue;
 			}
 			
-			DiffedPixels.Add(new()
+			Buffers.MainThreadBuffer.Add(new()
 			{
 				Index = opEnumerator.Current.Index,
 				Character = ' ',
@@ -347,7 +299,7 @@ public unsafe partial class Canvas
 		while (npEnumerator.MoveNext())
 		{
 			if (!OldPixels.Contains(npEnumerator.Current))
-				DiffedPixels.Add(npEnumerator.Current);
+				Buffers.MainThreadBuffer.Add(npEnumerator.Current);
 			
 			temp.Add(npEnumerator.Current);
 		}
@@ -373,8 +325,10 @@ public unsafe partial class Canvas
 		//	}
 		//	
 		//	foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
-
+		
+		OldPixels.Dispose();
 		OldPixels = temp;
+		
 		IndexUpdates.Clear();
 	}
 	
@@ -382,47 +336,50 @@ public unsafe partial class Canvas
 	
 	private void RenderModifiedPixels()
 	{
-		var buf = RenderPixels;
+		var buf = Buffers.RenderThreadBuffer;
 
 		for(int idx = 0; idx < buf.Count; idx++)
 		{
-			var LastIndex = LastPixel.Index;
-			var CurrentIndex = buf[idx].Index;
+			var NewPixel = buf[idx];
+			RenderPixel(ref LastPixel, ref NewPixel);
 			
-			var CurrentPixel = buf[idx];
-			
-			// First, handle position
-			if (CurrentIndex - LastIndex != 1)
-			{
-				if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
-				{
-					FinalWriteBuffer.Append("\u001b[").Append(CurrentIndex - LastIndex - 1).Append("C");		// If indices are on same line and spaced further than 1 cell apart, shift right
-				}
-				else
-				{
-					(int Y, int X) = Math.DivRem(CurrentIndex, Width);
-					FinalWriteBuffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");     // If anywhere else, set absolute position
-				}
-			}
-			
-			// Then, handle colors and styling
-			if (CurrentPixel.Foreground != LastPixel.Foreground)
-				CurrentPixel.Foreground.AsForegroundVT(ref FinalWriteBuffer);
-			
-			if (CurrentPixel.Background != LastPixel.Background)
-				CurrentPixel.Background.AsBackgroundVT(ref FinalWriteBuffer);
-			
-			if (CurrentPixel.Style != LastPixel.Style)
-			{
-				(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, CurrentPixel.Style);
-				AppendStyleTransitionSequence(ResetMask, SetMask);
-			}
-			
-			FinalWriteBuffer.Append(CurrentPixel.Character);
-			
-			// Store this state for future reference
-			LastPixel = CurrentPixel;
+			LastPixel = NewPixel;
 		}
+	}
+	
+	private void RenderPixel(ref Pixel LastPixel, ref Pixel NewPixel)
+	{
+		var LastIndex = LastPixel.Index;
+		var CurrentIndex = NewPixel.Index;
+		
+		// First, handle position
+		if (CurrentIndex - LastIndex != 1)
+		{
+			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
+			{
+				FinalWriteBuffer.Append("\u001b[").Append(CurrentIndex - LastIndex - 1).Append("C");		// If indices are on same line and spaced further than 1 cell apart, shift right
+			}
+			else
+			{
+				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
+				FinalWriteBuffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");     // If anywhere else, set absolute position
+			}
+		}
+		
+		// Then, handle colors and styling
+		if (NewPixel.Foreground != LastPixel.Foreground)
+			NewPixel.Foreground.AsForegroundVT(ref FinalWriteBuffer);
+		
+		if (NewPixel.Background != LastPixel.Background)
+			NewPixel.Background.AsBackgroundVT(ref FinalWriteBuffer);
+		
+		if (NewPixel.Style != LastPixel.Style)
+		{
+			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, NewPixel.Style);
+			AppendStyleTransitionSequence(ResetMask, SetMask);
+		}
+		
+		FinalWriteBuffer.Append(NewPixel.Character);
 	}
 	
 	private int GetY(int Index) => Index / Width;

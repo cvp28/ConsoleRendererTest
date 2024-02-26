@@ -22,7 +22,7 @@ new Thread(delegate()
 		if (Console.KeyAvailable)
 			InputQueue.Enqueue(Console.ReadKey(true));
 
-		Thread.Sleep(100);
+		Thread.Sleep(20);
 	}
 }).Start();
 
@@ -32,6 +32,7 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
+	//Console.Title = $"Count: {c.Buffers.MainThreadBuffer.Count}";
 	Console.Title = $"FPS: {CurrentFPS:N0}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
@@ -84,14 +85,10 @@ while (Running)
 			case ConsoleKey.RightArrow:
 				X++;
 				break;
-			
-			case ConsoleKey.C:
-				c.ConcurrentRenderingEnabled = !c.ConcurrentRenderingEnabled;
-				break;
 		}
 	}
 	
-	c.WriteAt(X, Y, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
+	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	
 	//c.WriteAt(10, 10, "Some text");
 	DoRender();
