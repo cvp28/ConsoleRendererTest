@@ -91,11 +91,11 @@ while (Running)
 	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	
 	//c.WriteAt(10, 10, "Some text");
-	DoRender();
+	//DoRender();
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 
-	//Thread.Sleep(10);
+	//Thread.Sleep(1000);
 	
 	c.Flush();
 	

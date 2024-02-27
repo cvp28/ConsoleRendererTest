@@ -38,7 +38,7 @@ internal struct SmallRect
     public short Bottom;
 }
 
-internal class Kernel32
+internal unsafe class Kernel32
 {
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern IntPtr GetStdHandle(int nStdHandle);
@@ -60,7 +60,7 @@ internal class Kernel32
 	 IntPtr templateFile);
 
 	[DllImport("kernel32.dll")]
-	public static extern bool WriteFile(IntPtr fFile, byte[] lpBuffer, uint nNumberOfBytesToWrite, out uint lpNumberOfBytesWritten, IntPtr lpOverlapped);
+	public static extern bool WriteFile(IntPtr fFile, byte* lpBuffer, uint nNumberOfBytesToWrite, out uint lpNumberOfBytesWritten, IntPtr lpOverlapped);
 	
 	[DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
 	public static extern Int32 WaitForSingleObject(IntPtr handle, int milliseconds);

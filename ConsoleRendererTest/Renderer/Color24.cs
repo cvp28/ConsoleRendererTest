@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Buffers;
+using System.Text;
+using Utf8StringInterpolation;
 
 namespace SharpCanvas;
 
@@ -21,25 +23,13 @@ public struct Color24
 		Blue = b;
 	}
 	
-	public void AsForegroundVT(ref StringBuilder sb)
+	public void AsForegroundVT(ref Utf8StringWriter<ArrayBufferWriter<byte>> sb)
 	{
-		sb.Append("\u001b[38;2;");
-		sb.Append(Red);
-		sb.Append(';');
-		sb.Append(Green);
-		sb.Append(';');
-		sb.Append(Blue);
-		sb.Append('m');
+		sb.AppendFormat($"\u001b[38;2;{Red};{Green};{Blue}m");
 	}
-	public void AsBackgroundVT(ref StringBuilder sb)
+	public void AsBackgroundVT(ref Utf8StringWriter<ArrayBufferWriter<byte>> sb)
 	{
-		sb.Append("\u001b[48;2;");
-		sb.Append(Red);
-		sb.Append(';');
-		sb.Append(Green);
-		sb.Append(';');
-		sb.Append(Blue);
-		sb.Append('m');
+		sb.AppendFormat($"\u001b[48;2;{Red};{Green};{Blue}m");
 	}
 
 	public static readonly Color24 White = new(255, 255, 255);
