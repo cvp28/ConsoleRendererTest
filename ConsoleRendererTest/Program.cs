@@ -1,6 +1,8 @@
 ﻿using System.Text;
 using System.Collections.Concurrent;
 
+using Collections.Pooled;
+
 using SharpCanvas;
 using SharpCanvas.Codes;
 
@@ -10,6 +12,20 @@ Console.OutputEncoding = Encoding.UTF8;
 Console.ReadKey(true);
 
 var c = new Canvas();
+
+Console.Write("Retrieving frames... ");
+
+PooledList<string> Frames = new();
+
+foreach (var file in Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii"))
+{
+	Frames.Add(File.ReadAllText(file));
+}
+
+Console.WriteLine("done.");
+
+var Width = Console.WindowWidth;
+var Height = Console.WindowHeight;
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
@@ -39,13 +55,13 @@ FPSTimer.Elapsed += (sender, args) =>
 
 FPSTimer.Start();
 
-var Width = Console.WindowWidth;
-var Height = Console.WindowHeight;
+
 
 int X = 10;
 int Y = 2;
 
 double shift = 0;
+int f = 0;
 
 while (Running)
 {
@@ -87,19 +103,34 @@ while (Running)
 		}
 	}
 
-	c.WriteAt(X, Y, $"Concurrent Rendering!");
+	int fY = 0;
+	
+	var frame = Frames[f];
+	
+	for (int i = 0; i < frame.Length; i++)
+	{
+		if (frame[i] == '\n' || frame[i] == '\r')
+			fY++;
+		else
+			c.WriteAt(i % 481, fY, frame[i], Color24.White, Color24.Black, 0);
+	}
+	
+	c.Flush();
+
+	//c.WriteAt(X, Y, $"Concurrent Rendering!");
 	//c.DrawBox(10, 5, 5, 5, "This is a window!");
 	
 	//c.WriteAt(10, 10, "Some text");
-	DoRender();
+	//DoRender();
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 
 	//Thread.Sleep(1000);
 	
-	c.Flush();
+	//c.Flush();
 	
 	CurrentFPS++;
+	f++;
 }
 
 void DoRender()
