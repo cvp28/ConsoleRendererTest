@@ -107,6 +107,8 @@ public partial class Canvas
 			Style = StyleMask
 		};
 
+		NewPixel.CalculateHash();
+
 		// If this space is not actually going to be visible, cull it
 		//	if (Character == ' ' && Background == Color24.Black)
 		//		return;

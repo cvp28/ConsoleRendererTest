@@ -12,15 +12,16 @@ public enum ColorLevel
 
 public struct Color24
 {
-	public byte Red;
-	public byte Green;
-	public byte Blue;
-	
+	public byte Red { get; init; }
+	public byte Green { get; init; }
+	public byte Blue { get; init; }
+
 	public Color24(byte r, byte g, byte b)
 	{
 		Red = r;
 		Green = g;
 		Blue = b;
+		_hash = HashCode.Combine(Red, Green, Blue);
 	}
 	
 	public void AsForegroundVT(ref Utf8StringWriter<ArrayBufferWriter<byte>> sb)
@@ -41,20 +42,9 @@ public struct Color24
 	
 	//public static bool Equals(Color24 x, Color24 y) => x.Red == y.Red && x.Green == y.Green && x.Blue == y.Blue;
 	
-	public override bool Equals(object obj)
-	{
-		//if (obj is Color24 c)
-			return GetHashCode() == ((Color24) obj).GetHashCode();
-			//return Equals(this, c);
-		//else
-		//	return false;
-	}
+	public override bool Equals(object obj) => GetHashCode() == obj.GetHashCode();
 
-	public override int GetHashCode()
-	{
-		unchecked
-		{
-			return HashCode.Combine(Red, Green, Blue);
-		}
-	}
+	private int _hash;
+
+	public override int GetHashCode() => _hash;
 }

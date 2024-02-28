@@ -109,12 +109,10 @@ void DoRender()
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 
-		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);//, StyleCode.Bold | StyleCode.Underlined);
+		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));
 	
 	shift += 0.1;
-	
-	//c.Flush();
 }
