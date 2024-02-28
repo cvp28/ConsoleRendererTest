@@ -55,8 +55,10 @@ public unsafe partial class Canvas
 		}
 		#endregion
 
-		RenderThread = new(RenderThreadProc);
-		RenderThread.Name = "Render Thread";
+		RenderThread = new(RenderThreadProc)
+		{
+			Name = "Render Thread"
+		};
 
 		RenderThread.Start();
 		

@@ -32,7 +32,6 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
-	//Console.Title = $"Count: {c.Buffers.MainThreadBuffer.Count}";
 	Console.Title = $"FPS: {CurrentFPS:N0}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
@@ -92,7 +91,7 @@ while (Running)
 	//c.DrawBox(10, 5, 5, 5, "This is a window!");
 	
 	//c.WriteAt(10, 10, "Some text");
-	//DoRender();
+	DoRender();
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 
