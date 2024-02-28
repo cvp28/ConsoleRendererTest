@@ -19,18 +19,6 @@ public class DoubleBuffer<T>
 		MainBuffer = BackBuffer1;
 		SecondaryBuffer = BackBuffer2;
 	}
-	
-	internal void Swap()
-	{
-		if (ReferenceEquals(MainBuffer, BackBuffer1))
-		{
-			MainBuffer = BackBuffer2;
-			SecondaryBuffer = BackBuffer1;
-		}
-		else
-		{
-			MainBuffer = BackBuffer1;
-			SecondaryBuffer = BackBuffer2;
-		}
-	}
+
+	internal void Swap() => (MainBuffer, SecondaryBuffer) = (SecondaryBuffer, MainBuffer);
 }

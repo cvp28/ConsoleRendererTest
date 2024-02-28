@@ -87,12 +87,12 @@ while (Running)
 				break;
 		}
 	}
-	
+
 	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	//c.DrawBox(10, 5, 5, 5, "This is a window!");
 	
 	//c.WriteAt(10, 10, "Some text");
-	DoRender();
+	//DoRender();
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 

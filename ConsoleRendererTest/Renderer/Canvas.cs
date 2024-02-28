@@ -77,6 +77,8 @@ public unsafe partial class Canvas
 			Background = new(0, 0, 0),
 			Style = 0
 		};
+
+		LastPixel.CalculateHash();
 	}
 	
 	/// <summary>
@@ -118,8 +120,8 @@ public unsafe partial class Canvas
 	
 	public void Flush() => ConcurrentFlush();
 	
-	private PooledSet<Pixel> NewPixels = new(ClearMode.Never);
-	private DoubleBuffer<Pixel> OldPixels = new(0);
+	private PooledSet<Pixel> NewPixels = new(1000, ClearMode.Never);
+	private DoubleBuffer<Pixel> OldPixels = new();
 	
 	public void SynchronousFlush()
 	{
@@ -251,7 +253,7 @@ public unsafe partial class Canvas
 	{
 		var LastIndex = LastPixel.Index;
 		var CurrentIndex = NewPixel.Index;
-		
+
 		// First, handle position
 		if (CurrentIndex - LastIndex != 1)
 		{
