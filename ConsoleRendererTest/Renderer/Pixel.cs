@@ -2,25 +2,30 @@
 
 namespace SharpCanvas;
 
-public struct Pixel : IComparable<Pixel>
+internal struct Pixel : IComparable<Pixel>
 {
-	public int Index;
+	public int Index { get; init; }
 	
-	public char Character;
+	public char Character { get; init; }
 	
-	public Color24 Foreground;
-	public Color24 Background;
-	
-	public byte Style;
-	
-	public readonly bool Styled => Style != 0;
+	public Color24 Foreground { get; init; }
+	public Color24 Background { get; init; }
+
+	public byte Style { get; init; }
 	
 	public static bool operator ==(Pixel x, Pixel y) => x.Equals(y);
 	public static bool operator !=(Pixel x, Pixel y) => !x.Equals(y);
 	
-	public override bool Equals(object obj) => GetHashCode() == ((Pixel) obj).GetHashCode();
-	
-	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
+	public override bool Equals(object obj) => GetHashCode() == obj.GetHashCode();
+
+	private int _hash;
+
+	public override int GetHashCode() => _hash;
+
+	public void CalculateHash()
+	{
+		unchecked { _hash = HashCode.Combine(Index, Character, Foreground, Background, Style); }
+	}
 	
 	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());
 }

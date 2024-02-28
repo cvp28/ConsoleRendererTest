@@ -58,4 +58,18 @@ public static class CodeHelper
 		StyleCode.None			=> 0,
 		_						=> 0
 	};
+	
+	public static byte GetResetCode(this StyleCode Style) => Style switch
+	{
+		StyleCode.Bold			=> 22,
+		StyleCode.Dim			=> 22,
+		StyleCode.Italic		=> 23,
+		StyleCode.Underlined	=> 24,
+		StyleCode.Blink			=> 25,
+		StyleCode.Inverted		=> 27,
+		StyleCode.CrossedOut	=> 29,
+
+		StyleCode.None			=> 0,
+		_						=> 0
+	};
 }

@@ -1,7 +1,8 @@
-﻿using System.Text;
+﻿using System.Buffers;
 using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
+using Utf8StringInterpolation;
 
 namespace SharpCanvas;
 using Interop;
@@ -14,73 +15,21 @@ public unsafe partial class Canvas
 
 	private int TotalCellCount => Width * Height;
 	
-	private bool _ConcurrentRenderingEnabled;
-	private readonly object _RendererLock = new();
-	
-	public bool ConcurrentRenderingEnabled
-	{
-		get => _ConcurrentRenderingEnabled;
-		
-		set
-		{
-			lock (_RendererLock)
-			{
-				_ConcurrentRenderingEnabled = value;
-				
-				Console.Clear();
-				
-				OldPixels.Clear();
-				IndexUpdates.Clear();
-				
-				if (value)
-				{
-					AsyncRenderTask.Wait();
-					AsyncPixelBuffer.Clear();
-					
-					RenderPixels = AsyncPixelBuffer;
-					FlushDelegate = ConcurrentFlush;
-				}
-				else
-				{
-					AsyncRenderTask.Wait();
-					AsyncPixelBuffer.Clear();
-					
-					RenderPixels = DiffedPixels;
-					FlushDelegate = SynchronousFlush;
-				}
-			}
-		}
-	}
-	
-	// General purpose pixel buffers
-	private PooledSet<Pixel> OldPixels = new(ClearMode.Never);
-
 	// Contains updated indices for each new frame
-	private PooledDictionary<int, Pixel> IndexUpdates = [];
-
-	// Constructed from reconciling the current and previous frames
-	private PooledList<Pixel> DiffedPixels = new(ClearMode.Never);
-	
-	private PooledList<Pixel> AsyncPixelBuffer = new(ClearMode.Never);
-	
-	private PooledList<Pixel> RenderPixels;
+	private PooledDictionary<int, Pixel> IndexUpdates = new(ClearMode.Never);
 	
 	private Thread RenderThread;
-	private bool DoRender = false;
+	
+	public bool DoRender = false;
 	
 	// Final string buffer containing writeable data
-	private StringBuilder FinalWriteBuffer = new(1024);
+	//private StringBuilder FinalWriteBuffer = new(1024);
 
-	private Action<byte[]> PlatformWriteStdout;
-	private Action FlushDelegate;
+	private Action<ReadOnlyMemory<byte>> PlatformWriteStdout;
 	
 	public int BufferDumpQuantity = 0;
 	
-	/// <summary>
-	/// 
-	/// </summary>
-	/// <param name="EnableConcurrentRendering">Enables concurrent executing of the Flush() method for improved renderer performance</param>
-	public Canvas(bool EnableConcurrentRendering = true)
+	public Canvas()
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
@@ -89,22 +38,28 @@ public unsafe partial class Canvas
 		if (OperatingSystem.IsWindows())
 		{
 			var Handle = Kernel32.GetStdHandle(-11);
-
-			PlatformWriteStdout = (byte[] Buffer) => Kernel32.WriteFile(Handle, Buffer, (uint) Buffer.Length, out _, nint.Zero);
+			
+			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
+			{
+				fixed (byte* buf = Buffer.Span)
+					Kernel32.WriteFile(Handle, buf, (uint) Buffer.Length, out _, nint.Zero);
+			};
 		}
 		else if (OperatingSystem.IsLinux())
 		{
-			PlatformWriteStdout = delegate (byte[] Buffer)
+			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
-				fixed (byte* buf = Buffer)
+				fixed (byte* buf = Buffer.Span)
 					Libc.Write(1, buf, (uint) Buffer.Length);
 			};
 		}
 		#endregion
-		
-		ConcurrentRenderingEnabled = EnableConcurrentRendering;
-		
-		RenderThread = new(RenderInternal);
+
+		RenderThread = new(RenderThreadProc)
+		{
+			Name = "Render Thread"
+		};
+
 		RenderThread.Start();
 		
 		InitScreen();
@@ -124,6 +79,8 @@ public unsafe partial class Canvas
 			Background = new(0, 0, 0),
 			Style = 0
 		};
+
+		LastPixel.CalculateHash();
 	}
 	
 	/// <summary>
@@ -144,7 +101,8 @@ public unsafe partial class Canvas
 
 		Console.Clear();
 
-		OldPixels.Clear();
+		OldPixels.MainBuffer.Clear();
+		OldPixels.SecondaryBuffer.Clear();
 		IndexUpdates.Clear();
 
 		InitScreen();
@@ -162,32 +120,31 @@ public unsafe partial class Canvas
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
 	
-	public void Clear()
-	{
-		//	Array.Copy(ClearPixels, CurrentFramePixels, CurrentFramePixels.Length);
-		//	Array.Copy(ClearPixels, LastFramePixels, LastFramePixels.Length);
-		//	Console.Clear();
-	}
+	public void Flush() => ConcurrentFlush();
 	
-	public void Flush() { lock(_RendererLock) FlushDelegate(); }
+	private PooledSet<Pixel> NewPixels = new(1000, ClearMode.Never);
+	private DoubleBuffer<Pixel> OldPixels = new();
 	
-	private void SynchronousFlush()
+	public void SynchronousFlush()
 	{
+		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
 			return;
 		
-		DiffedPixels.Clear();
-		ReconcileFrames();
+		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
 		
-		if (DiffedPixels.Count == 0)
+		using var FinalFrameTempBuffer = Utf8String.CreateWriter(out var writer);
+		
+		RenderPixels(ref writer);
+		
+		writer.Flush();
+		
+		if (FinalFrameTempBuffer.WrittenCount == 0)
 			return;
 		
-		FinalWriteBuffer.Clear();
-		RenderModifiedPixels();
-
-		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-
-		PlatformWriteStdout(FinalFrame);
+		//byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+		
+		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
 	}
 	
 	private void ConcurrentFlush()
@@ -195,297 +152,140 @@ public unsafe partial class Canvas
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
 			return;
-		
-		DiffedPixels.Clear();
-		ReconcileFrames();
-		
-		if (DiffedPixels.Count == 0)
-			return;
 
-		//	if (BufferDumpQuantity > 0)
-		//	{
-		//		File.AppendAllText(@"BufferDump.txt", FinalWriteBuffer.ToString() + "\n\n");
-		//		BufferDumpQuantity--;
-		//	}
-
-		// Wait for previous render to finish
-		while (DoRender)
-			continue;
+		while (DoRender);
 		
-		// Submit current frame to the renderer
-		RenderPixels.AddRange(DiffedPixels.Span);
+		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
 		DoRender = true;
 		
-		//RenderPixels = DiffedPixels;
-
-		//	RenderPixels.AddRange(DiffedPixels.Span);
-		//	
-		//	AsyncRenderTask = Task.Run(delegate
-		//	{
-		//		FinalWriteBuffer.Clear();
-		//		RenderModifiedPixels();
-		//		
-		//		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-		//		
-		//		PlatformWriteStdout(FinalFrame);
-		//	
-		//		RenderPixels.Clear();
-		//	});
+		IndexUpdates.Clear();
 	}
 	
-	private void RenderInternal()
+	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		
-	loop_start:
-		while (!DoRender)
-			continue;
-
-		FinalWriteBuffer.Clear();
-		RenderModifiedPixels();
-		
-		byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-		
-		PlatformWriteStdout(FinalFrame);
-
-		RenderPixels.Clear();
-		
-		DoRender = false;
-		goto loop_start;
-	}
-	
-	private PooledList<(T Item, bool InReference)> FindDifferences<T>(HashSet<T> RefObjs, HashSet<T> DiffObjs, IComparer<T> Comparer)
-	{
-		var temp = new PooledList<(T, bool)>();
-		
-		using var refs  = RefObjs.GetEnumerator();
-		using var diffs = DiffObjs.GetEnumerator();
-		
-		bool hasNext = refs.MoveNext() && diffs.MoveNext();
-		
-		while (hasNext)
-		{
-			int comparison = Comparer.Compare(refs.Current, diffs.Current);
-			
-			if (comparison == 0)
-			{
-				// insert code that emits the current element if equal elements should be kept
-				hasNext = refs.MoveNext() && diffs.MoveNext();
-
-			}
-			else if (comparison < 0)
-			{
-				temp.Add((refs.Current, true));
-				hasNext = refs.MoveNext();
-			}
-			else
-			{
-				temp.Add((diffs.Current, false));
-				hasNext = diffs.MoveNext();
-			}
-		}
-		
-		return temp;
-	}
-	
-	private Task AsyncRenderTask = Task.CompletedTask;
-	
-	private void ReconcileFrames()
-	{
-		if (!OldPixels.Any())
+		if (!OldPixels.MainBuffer.Any())
 		{
 			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in IndexUpdates.Values)
+			foreach (var p in NewPixels)
 			{
-				OldPixels.Add(p);
-				DiffedPixels.Add(p);
+				OldPixels.MainBuffer.Add(p);
+				
+				var NewPixel = p;
+
+				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+				LastPixel = NewPixel;
 			}
 			return;
 		}
-
-		// Notes:
-		// DONT SORT PIXELS EVER :)
-
-		var NewPixels = IndexUpdates.Values;
-
-		int IndexSelector(Pixel p) => p.Index;
 		
-		var ToSkip = OldPixels.IntersectBy(NewPixels.Select(IndexSelector), IndexSelector);
+		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
+		var npEnumerator = NewPixels.GetEnumerator();
 		
-		var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
-		var ToDraw = NewPixels.Except(ToSkip);
-		
-		foreach (var i in ToClear)
+		while (opEnumerator.MoveNext())
 		{
-			DiffedPixels.Add(new()
+			if (NewPixels.Contains(opEnumerator.Current))
 			{
-				Index = i,
+				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
+				continue;
+			}
+			
+			var NewPixel = new Pixel()
+			{
+				Index = opEnumerator.Current.Index,
 				Character = ' ',
 				Foreground = Color24.White,
 				Background = Color24.Black,
 				Style = 0
-			});
+			};
+
+			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+			LastPixel = NewPixel;
+		}
+
+		while (npEnumerator.MoveNext())
+		{
+			if (!OldPixels.MainBuffer.Contains(npEnumerator.Current))
+			{
+				var NewPixel = npEnumerator.Current;
+
+				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+				LastPixel = NewPixel;
+			}
+			
+			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
 		}
 		
-		OldPixels.Clear();
-		OldPixels = ToSkip.ToPooledSet();
+		NewPixels.Clear();
 		
-		foreach (var p in ToDraw) { OldPixels.Add(p); DiffedPixels.Add(p); }
-
-		IndexUpdates.Clear();
+		OldPixels.MainBuffer.Clear();
+		OldPixels.Swap();
 	}
 	
-	private void ReconcileFramesEx()
+	private void RenderThreadProc()
 	{
-		if (!OldPixels.Any())
+		loop_start: while (!DoRender);
+		
+		var FinalFrame = Utf8String.CreateWriter(out var writer);
+		
+		RenderPixels(ref writer);
+		
+		writer.Flush();	// Fill buffer with writer contents
+		
+		if (FinalFrame.WrittenCount == 0)
 		{
-			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in IndexUpdates.Values)
-			{
-				OldPixels.Add(p);
-				DiffedPixels.Add(p);
-			}
-			return;
+			FinalFrame.Dispose();
+			DoRender = false;
+			
+			goto loop_start;
 		}
 		
-		var hOldPixels = new HashSet<Pixel>(OldPixels);
-		var NewPixels = new HashSet<Pixel>(IndexUpdates.Values);
+		PlatformWriteStdout(FinalFrame.WrittenMemory);
 		
-		//int IndexSelector(Pixel p) => p.Index;
+		FinalFrame.Dispose();
+		DoRender = false;
 		
-		//	var refs  = OldPixels.ToImmutableArray().GetEnumerator();
-		//	var diffs = NewPixels.ToImmutableArray().GetEnumerator();
-		//	
-		//	bool hasNext = refs.MoveNext() && diffs.MoveNext();
-		//	
-		//	while (hasNext)
-		//	{
-		//		int comparison = Comparer<Pixel>.Default.Compare(refs.Current, diffs.Current);
-		//		
-		//		if (comparison == 0)
-		//		{
-		//			// insert code that emits the current element if equal elements should be kept
-		//			hasNext = refs.MoveNext() && diffs.MoveNext();
-		//	
-		//		}
-		//		else if (comparison < 0)
-		//		{
-		//			OldPixels.Remove(refs.Current);
-		//				
-		//			DiffedPixels.Add(new()
-		//			{
-		//				Index = refs.Current.Index,
-		//				Character = ' ',
-		//				Foreground = Color24.White,
-		//				Background = Color24.Black,
-		//				Style = 0
-		//			});
-		//			
-		//			hasNext = refs.MoveNext();
-		//		}
-		//		else
-		//		{
-		//			OldPixels.Add(diffs.Current);
-		//			DiffedPixels.Add(diffs.Current);
-		//			
-		//			hasNext = diffs.MoveNext();
-		//		}
-		//	}
-		
-		//	var diffs = FindDifferences2(hOldPixels, NewPixels, Comparer<Pixel>.Default);
-		//	
-		//	foreach (var p in diffs)
-		//		switch (p.InReference)
-		//		{
-		//			case false:
-		//				OldPixels.Add(p.Item);
-		//				DiffedPixels.Add(p.Item);
-		//				break;
-		//			
-		//			case true:
-		//				OldPixels.Remove(p.Item);
-		//				
-		//				DiffedPixels.Add(new()
-		//				{
-		//					Index = p.Item.Index,
-		//					Character = ' ',
-		//					Foreground = Color24.White,
-		//					Background = Color24.Black,
-		//					Style = 0
-		//				});
-		//				break;
-		//		}
-		//	
-		//	diffs.Dispose();
-		
-		//	var ToSkip = OldPixels.Intersect(NewPixels);
-		//	var ToClear = OldPixels.Select(IndexSelector).Except(ToSkip.Select(IndexSelector));
-		//	var ToDraw = NewPixels.Except(ToSkip);
-		//	
-		//	foreach (var i in ToClear)
-		//		DiffedPixels.Add(new()
-		//		{
-		//			Index = i,
-		//			Character = ' ',
-		//			Foreground = Color24.White,
-		//			Background = Color24.Black,
-		//			Style = 0
-		//		});
-		//	
-		//	DiffedPixels.AddRange(ToDraw);
-		//	
-		//	OldPixels.Clear();
-
-		IndexUpdates.Clear();
+		goto loop_start;
 	}
 	
 	private Pixel LastPixel;
 	
-	private void RenderModifiedPixels()
-	{
-		var buf = RenderPixels;
-
-		for(int idx = 0; idx < buf.Count; idx++)
-		{
-			var LastIndex = LastPixel.Index;
-			var CurrentIndex = buf[idx].Index;
-			
-			var CurrentPixel = buf[idx];
-			
-			// First, handle position
-			if (CurrentIndex - LastIndex != 1)
-			{
-				if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
-				{
-					FinalWriteBuffer.Append("\u001b[").Append(CurrentIndex - LastIndex - 1).Append("C");		// If indices are on same line and spaced further than 1 cell apart, shift right
-				}
-				else
-				{
-					(int Y, int X) = Math.DivRem(CurrentIndex, Width);
-					FinalWriteBuffer.Append("\u001b[").Append(Y + 1).Append(';').Append(X + 1).Append("H");     // If anywhere else, set absolute position
-				}
-			}
-			
-			// Then, handle colors and styling
-			if (CurrentPixel.Foreground != LastPixel.Foreground)
-				CurrentPixel.Foreground.AsForegroundVT(ref FinalWriteBuffer);
-			
-			if (CurrentPixel.Background != LastPixel.Background)
-				CurrentPixel.Background.AsBackgroundVT(ref FinalWriteBuffer);
-			
-			if (CurrentPixel.Style != LastPixel.Style)
-			{
-				(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, CurrentPixel.Style);
-				AppendStyleTransitionSequence(ResetMask, SetMask);
-			}
-			
-			FinalWriteBuffer.Append(CurrentPixel.Character);
-			
-			// Store this state for future reference
-			LastPixel = CurrentPixel;
-		}
-	}
-	
 	private int GetY(int Index) => Index / Width;
+
+	private void RenderPixel(ref Pixel LastPixel, ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	{
+		var LastIndex = LastPixel.Index;
+		var CurrentIndex = NewPixel.Index;
+
+		// First, handle position
+		if (CurrentIndex - LastIndex != 1)
+		{
+			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
+			{
+				int count = CurrentIndex - LastIndex - 1;
+				writer.AppendFormat($"\u001b[{count}C"); 			// If indices are on same line and spaced further than 1 cell apart, shift right
+			}
+			else
+			{
+				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
+				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");	// If anywhere else, set absolute position
+			}
+		}
+		
+		// Then, handle colors and styling
+		if (NewPixel.Foreground != LastPixel.Foreground)
+			NewPixel.Foreground.AsForegroundVT(ref writer);
+		
+		if (NewPixel.Background != LastPixel.Background)
+			NewPixel.Background.AsBackgroundVT(ref writer);
+		
+		if (NewPixel.Style != LastPixel.Style)
+		{
+			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, NewPixel.Style);
+			AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
+		}
+		
+		writer.Append(NewPixel.Character);
+	}
 	
 	/// <summary>
 	/// <para>Takes two style masks: a current one and a new one and produces</para>
@@ -505,59 +305,57 @@ public unsafe partial class Canvas
 		return (r, s);
 	}
 	
-	private void AppendStyleTransitionSequence(byte ResetMask, byte SetMask)
+	private void AppendStyleTransitionSequence(byte ResetMask, byte SetMask, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		FinalWriteBuffer.Append("\u001b[");
+		writer.Append("\u001b[");
 		
 		if (ResetMask != 0)
-			AppendResetSequence(ResetMask);
+			AppendResetSequence(ResetMask, ref writer);
 		
 		if (SetMask != 0)
-			AppendSetSequence(SetMask);
-
-		FinalWriteBuffer.Remove(FinalWriteBuffer.Length - 1, 1);
-		FinalWriteBuffer.Append('m');
+			AppendSetSequence(SetMask, ref writer);
+		
+		writer.Append('m');
 	}
 	
-	public void AppendResetSequence(byte ResetMask)
+	public void AppendResetSequence(byte ResetMask, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		FinalWriteBuffer.Append("\u001b[");
+		writer.Append("\u001b[");
+
+		Span<StyleCode> Codes = stackalloc StyleCode[8];
+
+		StyleHelper.UnpackStyle(ResetMask, ref Codes, out int Count);
+
+		for (int i = 0; i < Count; i++)
+			if ((ResetMask & Codes[i].GetMask()) >= 1)
+			{
+				writer.AppendFormat($"{Codes[i].GetResetCode()}");
+				if (i != Count - 1) writer.Append(';');
+			}
 		
-		if ((ResetMask & StyleCode.Bold.GetMask()) >= 1 || (ResetMask & StyleCode.Dim.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NormalIntensity);
-			FinalWriteBuffer.Append(';');
-		}
 		
-		if ((ResetMask & StyleCode.Italic.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NotItalicised);
-			FinalWriteBuffer.Append(';');
-		}
 		
-		if ((ResetMask & StyleCode.Underlined.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NotUnderlined);
-			FinalWriteBuffer.Append(';');
-		}
 		
-		if ((ResetMask & StyleCode.Blink.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NotBlinking);
-			FinalWriteBuffer.Append(';');
-		}
 		
-		if ((ResetMask & StyleCode.Inverted.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NotInverted);
-			FinalWriteBuffer.Append(';');
-		}
-		
-		if ((ResetMask & StyleCode.CrossedOut.GetMask()) >= 1)
-		{
-			FinalWriteBuffer.Append((byte) ResetCode.NotCrossedOut);
-			FinalWriteBuffer.Append(';');
-		}
+		//	writer.Append("\u001b[");
+		//	
+		//	if ((ResetMask & StyleCode.Bold.GetMask()) >= 1 || (ResetMask & StyleCode.Dim.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NormalIntensity};");
+		//	
+		//	if ((ResetMask & StyleCode.Italic.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NotItalicised};");
+		//	
+		//	if ((ResetMask & StyleCode.Underlined.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NotUnderlined};");
+		//	
+		//	if ((ResetMask & StyleCode.Blink.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NotBlinking};");
+		//	
+		//	if ((ResetMask & StyleCode.Inverted.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NotInverted};");
+		//	
+		//	if ((ResetMask & StyleCode.CrossedOut.GetMask()) >= 1)
+		//		writer.AppendFormat($"{(byte) ResetCode.NotCrossedOut};");
 	}
 	
 	/// <summary>
@@ -565,9 +363,9 @@ public unsafe partial class Canvas
 	/// </summary>
 	/// <param name="SetMask">The mask to set</param>
 	/// <returns>The resulting VT escape sequence</returns>
-	public void AppendSetSequence(byte SetMask)
+	public void AppendSetSequence(byte SetMask, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		FinalWriteBuffer.Append("\u001b[");
+		writer.Append("\u001b[");
 
 		Span<StyleCode> Codes = stackalloc StyleCode[8];
 
@@ -575,10 +373,7 @@ public unsafe partial class Canvas
 
 		for (int i = 0; i < Count; i++)
 			if ((SetMask & Codes[i].GetMask()) >= 1)
-			{
-				FinalWriteBuffer.Append(Codes[i].GetCode());
-				FinalWriteBuffer.Append(';');
-			}
+				writer.AppendFormat($"{Codes[i].GetCode()}m");
 	}
 }
 
@@ -624,4 +419,3 @@ public static class StyleHelper
 		Length = Index;
 	}
 }
-

@@ -9,10 +9,7 @@ Console.OutputEncoding = Encoding.UTF8;
 
 Console.ReadKey(true);
 
-var c = new Canvas()
-{
-	ConcurrentRenderingEnabled = false
-};
+var c = new Canvas();
 
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
@@ -25,7 +22,7 @@ new Thread(delegate()
 		if (Console.KeyAvailable)
 			InputQueue.Enqueue(Console.ReadKey(true));
 
-		Thread.Sleep(50);
+		Thread.Sleep(20);
 	}
 }).Start();
 
@@ -87,21 +84,18 @@ while (Running)
 			case ConsoleKey.RightArrow:
 				X++;
 				break;
-			
-			case ConsoleKey.C:
-				c.ConcurrentRenderingEnabled = !c.ConcurrentRenderingEnabled;
-				break;
 		}
 	}
-	
-	c.WriteAt(X, Y, $"Concurrent Rendering: {c.ConcurrentRenderingEnabled}");
+
+	c.WriteAt(X, Y, $"Concurrent Rendering!");
+	//c.DrawBox(10, 5, 5, 5, "This is a window!");
 	
 	//c.WriteAt(10, 10, "Some text");
 	DoRender();
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 
-	//Thread.Sleep(10);
+	//Thread.Sleep(1000);
 	
 	c.Flush();
 	
@@ -114,12 +108,10 @@ void DoRender()
 	{
 		double y = Height / 2 + 10 * Math.Sin(0.05 * x + shift);
 
-		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);//, StyleCode.Bold | StyleCode.Underlined);
+		c.WriteAt(x, (int) y, '*', new(255, 255, 255), new(0, 0, 0), StyleCode.None);
 	}
 	
 	c.DrawLine(0, Height / 2, Width - 1, (int)(Height / 2 + 10 * Math.Sin(0.05 * (Width - 1) + shift)));
 	
 	shift += 0.1;
-	
-	//c.Flush();
 }

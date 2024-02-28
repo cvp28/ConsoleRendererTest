@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Buffers;
+using System.Text;
+using Utf8StringInterpolation;
 
 namespace SharpCanvas;
 
@@ -10,36 +12,25 @@ public enum ColorLevel
 
 public struct Color24
 {
-	public byte Red;
-	public byte Green;
-	public byte Blue;
-	
+	public byte Red { get; init; }
+	public byte Green { get; init; }
+	public byte Blue { get; init; }
+
 	public Color24(byte r, byte g, byte b)
 	{
 		Red = r;
 		Green = g;
 		Blue = b;
+		_hash = HashCode.Combine(Red, Green, Blue);
 	}
 	
-	public void AsForegroundVT(ref StringBuilder sb)
+	public void AsForegroundVT(ref Utf8StringWriter<ArrayBufferWriter<byte>> sb)
 	{
-		sb.Append("\u001b[38;2;");
-		sb.Append(Red);
-		sb.Append(';');
-		sb.Append(Green);
-		sb.Append(';');
-		sb.Append(Blue);
-		sb.Append('m');
+		sb.AppendFormat($"\u001b[38;2;{Red};{Green};{Blue}m");
 	}
-	public void AsBackgroundVT(ref StringBuilder sb)
+	public void AsBackgroundVT(ref Utf8StringWriter<ArrayBufferWriter<byte>> sb)
 	{
-		sb.Append("\u001b[48;2;");
-		sb.Append(Red);
-		sb.Append(';');
-		sb.Append(Green);
-		sb.Append(';');
-		sb.Append(Blue);
-		sb.Append('m');
+		sb.AppendFormat($"\u001b[48;2;{Red};{Green};{Blue}m");
 	}
 
 	public static readonly Color24 White = new(255, 255, 255);
@@ -51,14 +42,9 @@ public struct Color24
 	
 	//public static bool Equals(Color24 x, Color24 y) => x.Red == y.Red && x.Green == y.Green && x.Blue == y.Blue;
 	
-	public override bool Equals(object obj)
-	{
-		//if (obj is Color24 c)
-			return GetHashCode() == ((Color24) obj).GetHashCode();
-			//return Equals(this, c);
-		//else
-		//	return false;
-	}
-	
-	public override int GetHashCode() => HashCode.Combine(Red, Green, Blue);
+	public override bool Equals(object obj) => GetHashCode() == obj.GetHashCode();
+
+	private int _hash;
+
+	public override int GetHashCode() => _hash;
 }
