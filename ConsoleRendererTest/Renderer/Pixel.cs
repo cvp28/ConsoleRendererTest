@@ -19,8 +19,14 @@ public struct Pixel : IComparable<Pixel>
 	public static bool operator !=(Pixel x, Pixel y) => !x.Equals(y);
 	
 	public override bool Equals(object obj) => GetHashCode() == ((Pixel) obj).GetHashCode();
-	
-	public override int GetHashCode() => HashCode.Combine(Index, Character, Foreground, Background, Style);
+
+	public override int GetHashCode()
+	{
+		unchecked
+		{
+			return HashCode.Combine(Index, Character, Foreground, Background, Style);
+		}
+	}
 	
 	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());
 }

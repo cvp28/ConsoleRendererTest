@@ -1,5 +1,4 @@
-﻿using System.Text;
-using System.Collections.Concurrent;
+﻿using System.Buffers;
 using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
@@ -8,8 +7,6 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
-using System.Buffers;
-using System.Security.Cryptography;
 
 public unsafe partial class Canvas
 {
@@ -120,7 +117,7 @@ public unsafe partial class Canvas
 	public void Flush() => ConcurrentFlush();
 	
 	private PooledSet<Pixel> NewPixels = new(ClearMode.Never);
-	private DoubleBuffer<Pixel> OldPixels = new();
+	private DoubleBuffer<Pixel> OldPixels = new(0);
 	
 	public void SynchronousFlush()
 	{
@@ -149,9 +146,8 @@ public unsafe partial class Canvas
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
 			return;
-		
-		while (DoRender)
-			continue;
+
+		while (DoRender);
 		
 		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
 		DoRender = true;
@@ -195,7 +191,7 @@ public unsafe partial class Canvas
 				Background = Color24.Black,
 				Style = 0
 			};
-			
+
 			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 			LastPixel = NewPixel;
 		}
@@ -205,7 +201,7 @@ public unsafe partial class Canvas
 			if (!OldPixels.MainBuffer.Contains(npEnumerator.Current))
 			{
 				var NewPixel = npEnumerator.Current;
-				
+
 				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 				LastPixel = NewPixel;
 			}
@@ -221,7 +217,7 @@ public unsafe partial class Canvas
 	
 	private void RenderThreadProc()
 	{
-		loop_start: while (!DoRender) continue;
+		loop_start: while (!DoRender);
 		
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 		
@@ -248,7 +244,7 @@ public unsafe partial class Canvas
 	private Pixel LastPixel;
 	
 	private int GetY(int Index) => Index / Width;
-	
+
 	private void RenderPixel(ref Pixel LastPixel, ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
@@ -417,4 +413,3 @@ public static class StyleHelper
 		Length = Index;
 	}
 }
-

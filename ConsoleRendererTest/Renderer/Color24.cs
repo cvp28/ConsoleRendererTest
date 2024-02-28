@@ -49,6 +49,12 @@ public struct Color24
 		//else
 		//	return false;
 	}
-	
-	public override int GetHashCode() => HashCode.Combine(Red, Green, Blue);
+
+	public override int GetHashCode()
+	{
+		unchecked
+		{
+			return HashCode.Combine(Red, Green, Blue);
+		}
+	}
 }
