@@ -15,12 +15,17 @@ var c = new Canvas();
 
 Console.Write("Retrieving frames... ");
 
-PooledList<string> Frames = new();
+string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+ConcurrentQueue<string> Frames = new();
 
-foreach (var file in Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii"))
+Task t = Task.Run(delegate
 {
-	Frames.Add(File.ReadAllText(file));
-}
+	for (int i = 0; i < FramePaths.Length; i++)
+	{
+		Frames.Enqueue(File.ReadAllText(FramePaths[i]));
+		Thread.Sleep(10);
+	}
+});
 
 Console.WriteLine("done.");
 
@@ -48,7 +53,7 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
-	Console.Title = $"FPS: {CurrentFPS:N0}";
+	Console.Title = $"FPS: {CurrentFPS:N0} QF: {Frames.Count}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
 };
@@ -105,14 +110,16 @@ while (Running)
 
 	int fY = 0;
 	
-	var frame = Frames[f];
+	while (Frames.IsEmpty);
+	
+	Frames.TryDequeue(out var frame);
 	
 	for (int i = 0; i < frame.Length; i++)
 	{
 		if (frame[i] == '\n' || frame[i] == '\r')
 			fY++;
 		else
-			c.WriteAt(i % 481, fY, frame[i], Color24.White, Color24.Black, 0);
+			c.WriteAt(i % 481, fY, frame[i], Color24.White, Color24.Black, 0);//(StyleCode) Random.Shared.Next(1, 256));
 	}
 	
 	c.Flush();
@@ -125,7 +132,7 @@ while (Running)
 
 	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
 
-	//Thread.Sleep(1000);
+	//Thread.Sleep(12);
 	
 	//c.Flush();
 	

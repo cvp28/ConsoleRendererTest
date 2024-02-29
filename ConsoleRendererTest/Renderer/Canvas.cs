@@ -90,6 +90,8 @@ public unsafe partial class Canvas
 	/// <param name="NewHeight">The new height</param>
 	public void Resize(int NewWidth = 0, int NewHeight = 0)
 	{
+		while (DoRender);
+		
 		if (NewWidth == 0)
 			NewWidth = Console.WindowWidth;
 		
@@ -175,6 +177,8 @@ public unsafe partial class Canvas
 				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 				LastPixel = NewPixel;
 			}
+			
+			NewPixels.Clear();
 			return;
 		}
 		
@@ -223,7 +227,9 @@ public unsafe partial class Canvas
 	
 	private void RenderThreadProc()
 	{
-		loop_start: while (!DoRender);
+	loop_start:
+	
+		while (!DoRender);
 		
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 		
@@ -232,18 +238,15 @@ public unsafe partial class Canvas
 		writer.Flush();	// Fill buffer with writer contents
 		
 		if (FinalFrame.WrittenCount == 0)
-		{
-			FinalFrame.Dispose();
-			DoRender = false;
-			
-			goto loop_start;
-		}
+			goto loop_end;
 		
 		PlatformWriteStdout(FinalFrame.WrittenMemory);
 		
+	loop_end:
 		FinalFrame.Dispose();
-		DoRender = false;
+		writer.Dispose();
 		
+		DoRender = false;
 		goto loop_start;
 	}
 	
@@ -312,8 +315,7 @@ public unsafe partial class Canvas
 		if (ResetMask != 0)
 			AppendResetSequence(ResetMask, ref writer);
 		
-		if (SetMask != 0)
-			AppendSetSequence(SetMask, ref writer);
+		AppendSetSequence(SetMask, ref writer);
 		
 		writer.Append('m');
 	}
@@ -332,30 +334,6 @@ public unsafe partial class Canvas
 				writer.AppendFormat($"{Codes[i].GetResetCode()}");
 				if (i != Count - 1) writer.Append(';');
 			}
-		
-		
-		
-		
-		
-		//	writer.Append("\u001b[");
-		//	
-		//	if ((ResetMask & StyleCode.Bold.GetMask()) >= 1 || (ResetMask & StyleCode.Dim.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NormalIntensity};");
-		//	
-		//	if ((ResetMask & StyleCode.Italic.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NotItalicised};");
-		//	
-		//	if ((ResetMask & StyleCode.Underlined.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NotUnderlined};");
-		//	
-		//	if ((ResetMask & StyleCode.Blink.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NotBlinking};");
-		//	
-		//	if ((ResetMask & StyleCode.Inverted.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NotInverted};");
-		//	
-		//	if ((ResetMask & StyleCode.CrossedOut.GetMask()) >= 1)
-		//		writer.AppendFormat($"{(byte) ResetCode.NotCrossedOut};");
 	}
 	
 	/// <summary>
@@ -373,7 +351,10 @@ public unsafe partial class Canvas
 
 		for (int i = 0; i < Count; i++)
 			if ((SetMask & Codes[i].GetMask()) >= 1)
-				writer.AppendFormat($"{Codes[i].GetCode()}m");
+			{
+				writer.AppendFormat($"{Codes[i].GetCode()}");
+				if (i != Count - 1) writer.Append(';');
+			}
 	}
 }
 
