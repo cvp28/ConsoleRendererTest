@@ -3,6 +3,7 @@
 namespace SharpCanvas;
 
 using Codes;
+using Collections.Pooled;
 
 public partial class Canvas
 {
@@ -94,6 +95,8 @@ public partial class Canvas
 		}
 	}
 
+	//private PooledList<int> NewHashes = new(1000);
+
 	// Entry point for modifying the pixel array
 	// Handles pixel modifications and optimizes redundant ones away when able
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
@@ -107,12 +110,12 @@ public partial class Canvas
 			Style = StyleMask
 		};
 
-		NewPixel.CalculateHash();
 
 		// If this space is not actually going to be visible, cull it
-		//	if (Character == ' ' && Background == Color24.Black)
-		//		return;
-		
+		if (Character == ' ' && Background == Color24.Black)
+			return;
+
+		NewPixel.CalculateHash();
 		IndexUpdates[Index] = NewPixel;
 
 		//if (NewPixels.Any(p => p.Index == Index))

@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
 using Utf8StringInterpolation;
+using SimdLinq;
 
 namespace SharpCanvas;
 using Interop;
@@ -14,31 +15,33 @@ public unsafe partial class Canvas
 	public int Height { get; private set; }
 
 	private int TotalCellCount => Width * Height;
-	
+
 	// Contains updated indices for each new frame
 	private PooledDictionary<int, Pixel> IndexUpdates = new(ClearMode.Never);
-	
+
 	private Thread RenderThread;
-	
+
 	public bool DoRender = false;
-	
+
 	// Final string buffer containing writeable data
 	//private StringBuilder FinalWriteBuffer = new(1024);
 
 	private Action<ReadOnlyMemory<byte>> PlatformWriteStdout;
-	
+
 	public int BufferDumpQuantity = 0;
-	
+
 	public Canvas()
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
-		
+
+		PrecacheSequences();
+
 		#region Platform-specific stdout write delegates
 		if (OperatingSystem.IsWindows())
 		{
 			var Handle = Kernel32.GetStdHandle(-11);
-			
+
 			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
 				fixed (byte* buf = Buffer.Span)
@@ -61,7 +64,7 @@ public unsafe partial class Canvas
 		};
 
 		RenderThread.Start();
-		
+
 		InitScreen();
 	}
 
@@ -82,7 +85,7 @@ public unsafe partial class Canvas
 
 		LastPixel.CalculateHash();
 	}
-	
+
 	/// <summary>
 	/// Resizes the canvas.
 	/// </summary>
@@ -90,14 +93,14 @@ public unsafe partial class Canvas
 	/// <param name="NewHeight">The new height</param>
 	public void Resize(int NewWidth = 0, int NewHeight = 0)
 	{
-		while (DoRender);
-		
+		while (DoRender) ;
+
 		if (NewWidth == 0)
 			NewWidth = Console.WindowWidth;
-		
+
 		if (NewHeight == 0)
 			NewHeight = Console.WindowHeight;
-		
+
 		Width = NewWidth;
 		Height = NewHeight;
 
@@ -109,46 +112,46 @@ public unsafe partial class Canvas
 
 		InitScreen();
 	}
-	
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private int ScreenIX(int X, int Y) => (Y * Width + X) % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
-	
+
 	public void DoBufferDump(int Quantity)
 	{
 		BufferDumpQuantity = Quantity;
 		if (File.Exists(@".\BufferDump.txt"))
 			File.Delete(@".\BufferDump.txt");
-		
+
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
-	
+
 	public void Flush() => ConcurrentFlush();
-	
+
 	private PooledSet<Pixel> NewPixels = new(1000, ClearMode.Never);
 	private DoubleBuffer<Pixel> OldPixels = new();
-	
+
 	public void SynchronousFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
 		if (!IndexUpdates.Any())
 			return;
-		
+
 		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
-		
+
 		using var FinalFrameTempBuffer = Utf8String.CreateWriter(out var writer);
-		
+
 		RenderPixels(ref writer);
-		
+
 		writer.Flush();
-		
+
 		if (FinalFrameTempBuffer.WrittenCount == 0)
 			return;
-		
+
 		//byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-		
+
 		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
 	}
-	
+
 	private void ConcurrentFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
@@ -156,13 +159,13 @@ public unsafe partial class Canvas
 			return;
 
 		while (DoRender);
-		
+
 		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
 		DoRender = true;
-		
+
 		IndexUpdates.Clear();
 	}
-	
+
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		if (!OldPixels.MainBuffer.Any())
@@ -171,20 +174,20 @@ public unsafe partial class Canvas
 			foreach (var p in NewPixels)
 			{
 				OldPixels.MainBuffer.Add(p);
-				
+
 				var NewPixel = p;
 
 				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 				LastPixel = NewPixel;
 			}
-			
+
 			NewPixels.Clear();
 			return;
 		}
-		
+
 		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
 		var npEnumerator = NewPixels.GetEnumerator();
-		
+
 		while (opEnumerator.MoveNext())
 		{
 			if (NewPixels.Contains(opEnumerator.Current))
@@ -192,7 +195,7 @@ public unsafe partial class Canvas
 				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
 				continue;
 			}
-			
+
 			var NewPixel = new Pixel()
 			{
 				Index = opEnumerator.Current.Index,
@@ -215,43 +218,43 @@ public unsafe partial class Canvas
 				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 				LastPixel = NewPixel;
 			}
-			
+
 			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
 		}
-		
+
 		NewPixels.Clear();
-		
+
 		OldPixels.MainBuffer.Clear();
 		OldPixels.Swap();
 	}
-	
+
 	private void RenderThreadProc()
 	{
 	loop_start:
-	
-		while (!DoRender);
-		
+
+		while (!DoRender) ;
+
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
-		
+
 		RenderPixels(ref writer);
-		
-		writer.Flush();	// Fill buffer with writer contents
-		
+
+		writer.Flush(); // Fill buffer with writer contents
+
 		if (FinalFrame.WrittenCount == 0)
 			goto loop_end;
-		
+
 		PlatformWriteStdout(FinalFrame.WrittenMemory);
-		
+
 	loop_end:
 		FinalFrame.Dispose();
 		writer.Dispose();
-		
+
 		DoRender = false;
 		goto loop_start;
 	}
-	
+
 	private Pixel LastPixel;
-	
+
 	private int GetY(int Index) => Index / Width;
 
 	private void RenderPixel(ref Pixel LastPixel, ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
@@ -265,31 +268,43 @@ public unsafe partial class Canvas
 			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
 			{
 				int count = CurrentIndex - LastIndex - 1;
-				writer.AppendFormat($"\u001b[{count}C"); 			// If indices are on same line and spaced further than 1 cell apart, shift right
+				writer.AppendFormat($"\u001b[{count}C");            // If indices are on same line and spaced further than 1 cell apart, shift right
 			}
 			else
 			{
 				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
-				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");	// If anywhere else, set absolute position
+				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");    // If anywhere else, set absolute position
 			}
 		}
-		
+
 		// Then, handle colors and styling
 		if (NewPixel.Foreground != LastPixel.Foreground)
 			NewPixel.Foreground.AsForegroundVT(ref writer);
-		
+
 		if (NewPixel.Background != LastPixel.Background)
 			NewPixel.Background.AsBackgroundVT(ref writer);
-		
+
 		if (NewPixel.Style != LastPixel.Style)
 		{
 			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, NewPixel.Style);
-			AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
+
+			writer.Append(StyleTransitionSequences[ResetMask * SetMask]);
+
+			//AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
 		}
-		
+
 		writer.Append(NewPixel.Character);
 	}
-	
+
+	private string[] StyleTransitionSequences = new string[65025];
+
+	private void PrecacheSequences()
+	{
+		for (int r = 0; r < 255; r++)
+			for (int s = 0; s < 255; s++)
+				StyleTransitionSequences[r * s] = GetStyleTransitionSequence((byte) r, (byte) s);
+	}
+
 	/// <summary>
 	/// <para>Takes two style masks: a current one and a new one and produces</para>
 	/// <br/>
@@ -300,6 +315,7 @@ public unsafe partial class Canvas
 	/// <param name="CurrentStyle">The currently applied style mask (all styles that have been flushed to the screen)</param>
 	/// <param name="NewStyle">The desired style mask to be applied</param>
 	/// <returns></returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static (byte ResetMask, byte SetMask) MakeStyleTransitionMasks(byte CurrentStyle, byte NewStyle)
 	{
 		byte r = (byte) (~NewStyle & CurrentStyle);
@@ -307,16 +323,16 @@ public unsafe partial class Canvas
 		
 		return (r, s);
 	}
-	
+
 	private void AppendStyleTransitionSequence(byte ResetMask, byte SetMask, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		writer.Append("\u001b[");
-		
+
 		if (ResetMask != 0)
 			AppendResetSequence(ResetMask, ref writer);
-		
+
 		AppendSetSequence(SetMask, ref writer);
-		
+
 		writer.Append('m');
 	}
 	
@@ -355,6 +371,55 @@ public unsafe partial class Canvas
 				writer.AppendFormat($"{Codes[i].GetCode()}");
 				if (i != Count - 1) writer.Append(';');
 			}
+	}
+
+	private string GetStyleTransitionSequence(byte ResetMask, byte SetMask)
+	{
+		string temp = "\u001b[";
+
+		if (ResetMask != 0)
+			temp += GetResetSequence(ResetMask);
+
+		temp += GetSetSequence(SetMask);
+		temp += 'm';
+
+		return temp;
+	}
+
+	private string GetSetSequence(byte SetMask)
+	{
+		string temp = "\u001b[";
+
+		Span<StyleCode> Codes = stackalloc StyleCode[8];
+
+		StyleHelper.UnpackStyle(SetMask, ref Codes, out int Count);
+
+		for (int i = 0; i < Count; i++)
+			if ((SetMask & Codes[i].GetMask()) >= 1)
+			{
+				temp += $"{Codes[i].GetCode()}";
+				if (i != Count - 1) temp += ';';
+			}
+
+		return temp;
+	}
+
+	private string GetResetSequence(byte ResetMask)
+	{
+		string temp = "\u001b[";
+
+		Span<StyleCode> Codes = stackalloc StyleCode[8];
+
+		StyleHelper.UnpackStyle(ResetMask, ref Codes, out int Count);
+
+		for (int i = 0; i < Count; i++)
+			if ((ResetMask & Codes[i].GetMask()) >= 1)
+			{
+				temp += $"{Codes[i].GetResetCode()}";
+				if (i != Count - 1) temp += ';';
+			}
+
+		return temp;
 	}
 }
 

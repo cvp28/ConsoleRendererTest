@@ -1,5 +1,5 @@
 ﻿using System.Buffers;
-using System.Text;
+
 using Utf8StringInterpolation;
 
 namespace SharpCanvas;
@@ -36,9 +36,9 @@ public struct Color24
 	public static readonly Color24 White = new(255, 255, 255);
 	public static readonly Color24 Black = new(0, 0, 0);
 	
-	public static bool operator==(Color24 first, Color24 second) => Equals(first, second);
+	public static bool operator==(Color24 first, Color24 second) => first.GetHashCode() == second.GetHashCode();
 	
-	public static bool operator!=(Color24 first, Color24 second) => !Equals(first, second);
+	public static bool operator!=(Color24 first, Color24 second) => first.GetHashCode() != second.GetHashCode();
 	
 	//public static bool Equals(Color24 x, Color24 y) => x.Red == y.Red && x.Green == y.Green && x.Blue == y.Blue;
 	
