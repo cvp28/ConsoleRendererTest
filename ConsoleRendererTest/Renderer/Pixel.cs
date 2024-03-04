@@ -1,7 +1,9 @@
 ﻿
+using System.Diagnostics.CodeAnalysis;
+
 namespace SharpCanvas;
 
-internal struct Pixel : IComparable<Pixel>
+internal struct Pixel : IEqualityComparer<Pixel>, IComparable<Pixel>
 {
 	public int Index { get; init; }
 	
@@ -15,18 +17,20 @@ internal struct Pixel : IComparable<Pixel>
 	public static bool operator ==(Pixel x, Pixel y) => x.Equals(y);
 	public static bool operator !=(Pixel x, Pixel y) => !x.Equals(y);
 	
+	public bool Equals(Pixel x, Pixel y) => x.GetHashCode() == y.GetHashCode();
 	public override bool Equals(object obj) => GetHashCode() == obj.GetHashCode();
 
 	private int _hash;
 
+	public int GetHashCode(Pixel obj) => _hash;
 	public override int GetHashCode() => _hash;
+	
+	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());
 
 	public void CalculateHash()
 	{
 		unchecked { _hash = HashCode.Combine(Index, Character, Foreground, Background, Style); }
 	}
-	
-	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());
 }
 
 //	public enum PixelAction

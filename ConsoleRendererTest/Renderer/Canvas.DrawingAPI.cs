@@ -3,7 +3,6 @@
 namespace SharpCanvas;
 
 using Codes;
-using Collections.Pooled;
 
 public partial class Canvas
 {
@@ -112,12 +111,12 @@ public partial class Canvas
 
 
 		// If this space is not actually going to be visible, cull it
-		if (Character == ' ' && Background == Color24.Black)
+		if (Character == ' ' && Background == DefaultBackground)
 			return;
-
+		
 		NewPixel.CalculateHash();
-		IndexUpdates[Index] = NewPixel;
-
+		BackBuffer.IndexUpdates[Index] = NewPixel;
+		
 		//if (NewPixels.Any(p => p.Index == Index))
 		//{
 		//	NewPixels.Remove(NewPixels.First(p => p.Index == Index));

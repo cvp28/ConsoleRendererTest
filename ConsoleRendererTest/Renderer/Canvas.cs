@@ -3,11 +3,11 @@ using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
 using Utf8StringInterpolation;
-using SimdLinq;
 
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using System.Collections.Frozen;
 
 public unsafe partial class Canvas
 {
@@ -18,6 +18,13 @@ public unsafe partial class Canvas
 
 	// Contains updated indices for each new frame
 	private PooledDictionary<int, Pixel> IndexUpdates = new(ClearMode.Never);
+	
+	// The frame buffer interface with double-buffering behavior built-in
+	// Allows for concurrent frame building and rendering
+	private DoubleFrameBuffer FrameBuffer;
+	
+	private FrameBuffer FrontBuffer => FrameBuffer.FrontBuffer;
+	private FrameBuffer BackBuffer => FrameBuffer.BackBuffer;
 
 	private Thread RenderThread;
 
@@ -34,7 +41,9 @@ public unsafe partial class Canvas
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
-
+		
+		FrameBuffer = new(1000);
+		
 		PrecacheSequences();
 
 		#region Platform-specific stdout write delegates
@@ -57,14 +66,14 @@ public unsafe partial class Canvas
 			};
 		}
 		#endregion
-
+		
 		RenderThread = new(RenderThreadProc)
 		{
 			Name = "Render Thread"
 		};
-
+		
 		RenderThread.Start();
-
+		
 		InitScreen();
 	}
 
@@ -105,11 +114,16 @@ public unsafe partial class Canvas
 		Height = NewHeight;
 
 		Console.Clear();
-
-		OldPixels.MainBuffer.Clear();
-		OldPixels.SecondaryBuffer.Clear();
-		IndexUpdates.Clear();
-
+		
+		FrontBuffer.OldPixels.MainBuffer.Clear();
+		FrontBuffer.OldPixels.SecondaryBuffer.Clear();
+		
+		BackBuffer.OldPixels.MainBuffer.Clear();
+		BackBuffer.OldPixels.SecondaryBuffer.Clear();
+		
+		FrontBuffer.IndexUpdates.Clear();
+		BackBuffer.IndexUpdates.Clear();
+		
 		InitScreen();
 	}
 
@@ -127,75 +141,63 @@ public unsafe partial class Canvas
 
 	public void Flush() => ConcurrentFlush();
 
-	private PooledSet<Pixel> NewPixels = new(1000, ClearMode.Never);
-	private DoubleBuffer<Pixel> OldPixels = new();
-
-	public void SynchronousFlush()
-	{
-		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-		if (!IndexUpdates.Any())
-			return;
-
-		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
-
-		using var FinalFrameTempBuffer = Utf8String.CreateWriter(out var writer);
-
-		RenderPixels(ref writer);
-
-		writer.Flush();
-
-		if (FinalFrameTempBuffer.WrittenCount == 0)
-			return;
-
-		//byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-
-		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
-	}
+	//	public void SynchronousFlush()
+	//	{
+	//		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
+	//		if (!IndexUpdates.Any())
+	//			return;
+	//		
+	//		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
+	//		
+	//		using var FinalFrameTempBuffer = Utf8String.CreateWriter(out var writer);
+	//		
+	//		RenderPixels(ref writer);
+	//		
+	//		writer.Flush();
+	//		
+	//		if (FinalFrameTempBuffer.WrittenCount == 0)
+	//			return;
+	//		
+	//		//byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
+	//		
+	//		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
+	//	}
 
 	private void ConcurrentFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-		if (!IndexUpdates.Any())
+		if (!BackBuffer.IndexUpdates.Any())
 			return;
-
+		
+		BackBuffer.ComputeNewPixels();
+		//foreach (var p in BackBuffer.IndexUpdates.Values) BackBuffer.NewPixels.Add(p);
+		
 		while (DoRender);
-
-		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
+		
+		FrameBuffer.Swap();
 		DoRender = true;
-
-		IndexUpdates.Clear();
+		
+		//hash = FrontBuffer.GetHashCode();
+		
+		BackBuffer.IndexUpdates.Clear();
+		BackBuffer.OldPixels.SecondaryBuffer.Clear();
 	}
+	
+	//private int hash;
 
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		if (!OldPixels.MainBuffer.Any())
-		{
-			//	If there is no data on the screen to diff against, submit all writes to the renderer
-			foreach (var p in NewPixels)
-			{
-				OldPixels.MainBuffer.Add(p);
-
-				var NewPixel = p;
-
-				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
-				LastPixel = NewPixel;
-			}
-
-			NewPixels.Clear();
-			return;
-		}
-
-		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
-		var npEnumerator = NewPixels.GetEnumerator();
-
+		var opEnumerator = FrontBuffer.OldPixels.MainBuffer.GetEnumerator();
+		var npEnumerator = FrontBuffer.NewPixels.GetEnumerator();
+		
 		while (opEnumerator.MoveNext())
 		{
-			if (NewPixels.Contains(opEnumerator.Current))
+			if (FrontBuffer.NewPixels.Contains(opEnumerator.Current))
 			{
-				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
+				FrontBuffer.OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
 				continue;
 			}
-
+			
 			var NewPixel = new Pixel()
 			{
 				Index = opEnumerator.Current.Index,
@@ -204,35 +206,32 @@ public unsafe partial class Canvas
 				Background = Color24.Black,
 				Style = 0
 			};
-
+			
 			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 			LastPixel = NewPixel;
 		}
 
 		while (npEnumerator.MoveNext())
 		{
-			if (!OldPixels.MainBuffer.Contains(npEnumerator.Current))
+			if (!FrontBuffer.OldPixels.MainBuffer.Contains(npEnumerator.Current))
 			{
 				var NewPixel = npEnumerator.Current;
 
 				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
 				LastPixel = NewPixel;
 			}
-
-			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
+			
+			FrontBuffer.OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
 		}
-
-		NewPixels.Clear();
-
-		OldPixels.MainBuffer.Clear();
-		OldPixels.Swap();
+		
+		FrontBuffer.SwapOldPixels();
 	}
 
 	private void RenderThreadProc()
 	{
 	loop_start:
 
-		while (!DoRender) ;
+		while (!DoRender);
 
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 
@@ -240,12 +239,9 @@ public unsafe partial class Canvas
 
 		writer.Flush(); // Fill buffer with writer contents
 
-		if (FinalFrame.WrittenCount == 0)
-			goto loop_end;
-
-		PlatformWriteStdout(FinalFrame.WrittenMemory);
-
-	loop_end:
+		if (FinalFrame.WrittenCount != 0)
+			PlatformWriteStdout(FinalFrame.WrittenMemory);
+		
 		FinalFrame.Dispose();
 		writer.Dispose();
 
