@@ -94,8 +94,6 @@ public partial class Canvas
 		}
 	}
 
-	//private PooledList<int> NewHashes = new(1000);
-
 	// Entry point for modifying the pixel array
 	// Handles pixel modifications and optimizes redundant ones away when able
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
@@ -115,7 +113,7 @@ public partial class Canvas
 			return;
 		
 		NewPixel.CalculateHash();
-		BackBuffer.IndexUpdates[Index] = NewPixel;
+		IndexUpdates[Index] = NewPixel;
 		
 		//if (NewPixels.Any(p => p.Index == Index))
 		//{

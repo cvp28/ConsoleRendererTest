@@ -7,7 +7,6 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
-using System.Collections.Frozen;
 
 public unsafe partial class Canvas
 {
@@ -17,21 +16,11 @@ public unsafe partial class Canvas
 	private int TotalCellCount => Width * Height;
 
 	// Contains updated indices for each new frame
-	private PooledDictionary<int, Pixel> IndexUpdates = new(ClearMode.Never);
+	private PooledDictionary<int, Pixel> IndexUpdates = new(1000, ClearMode.Never);
 	
-	// The frame buffer interface with double-buffering behavior built-in
-	// Allows for concurrent frame building and rendering
-	private DoubleFrameBuffer FrameBuffer;
-	
-	private FrameBuffer FrontBuffer => FrameBuffer.FrontBuffer;
-	private FrameBuffer BackBuffer => FrameBuffer.BackBuffer;
-
 	private Thread RenderThread;
 
 	public bool DoRender = false;
-
-	// Final string buffer containing writeable data
-	//private StringBuilder FinalWriteBuffer = new(1024);
 
 	private Action<ReadOnlyMemory<byte>> PlatformWriteStdout;
 
@@ -41,8 +30,6 @@ public unsafe partial class Canvas
 	{
 		Width = Console.WindowWidth;
 		Height = Console.WindowHeight;
-		
-		FrameBuffer = new(1000);
 		
 		PrecacheSequences();
 
@@ -114,16 +101,13 @@ public unsafe partial class Canvas
 		Height = NewHeight;
 
 		Console.Clear();
-		
-		FrontBuffer.OldPixels.MainBuffer.Clear();
-		FrontBuffer.OldPixels.SecondaryBuffer.Clear();
-		
-		BackBuffer.OldPixels.MainBuffer.Clear();
-		BackBuffer.OldPixels.SecondaryBuffer.Clear();
-		
-		FrontBuffer.IndexUpdates.Clear();
-		BackBuffer.IndexUpdates.Clear();
-		
+
+		NewPixels.MainBuffer.Clear();
+		NewPixels.SecondaryBuffer.Clear();
+
+		OldPixels.MainBuffer.Clear();
+		OldPixels.SecondaryBuffer.Clear();
+
 		InitScreen();
 	}
 
@@ -166,35 +150,33 @@ public unsafe partial class Canvas
 	private void ConcurrentFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-		if (!BackBuffer.IndexUpdates.Any())
+		if (!IndexUpdates.Any())
 			return;
-		
-		BackBuffer.ComputeNewPixels();
-		//foreach (var p in BackBuffer.IndexUpdates.Values) BackBuffer.NewPixels.Add(p);
+
+		foreach (var p in IndexUpdates.Values) NewPixels.SecondaryBuffer.Add(p);
 		
 		while (DoRender);
-		
-		FrameBuffer.Swap();
+
+		NewPixels.Swap();
 		DoRender = true;
 		
-		//hash = FrontBuffer.GetHashCode();
-		
-		BackBuffer.IndexUpdates.Clear();
-		BackBuffer.OldPixels.SecondaryBuffer.Clear();
+		IndexUpdates.Clear();
+		NewPixels.SecondaryBuffer.Clear();
 	}
-	
-	//private int hash;
+
+	private PooledDoubleSetBuffer<Pixel> OldPixels = new();
+	private PooledDoubleSetBuffer<Pixel> NewPixels = new();
 
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		var opEnumerator = FrontBuffer.OldPixels.MainBuffer.GetEnumerator();
-		var npEnumerator = FrontBuffer.NewPixels.GetEnumerator();
+		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
+		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
 		
 		while (opEnumerator.MoveNext())
 		{
-			if (FrontBuffer.NewPixels.Contains(opEnumerator.Current))
+			if (NewPixels.MainBuffer.Contains(opEnumerator.Current))
 			{
-				FrontBuffer.OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
+				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
 				continue;
 			}
 			
@@ -213,7 +195,7 @@ public unsafe partial class Canvas
 
 		while (npEnumerator.MoveNext())
 		{
-			if (!FrontBuffer.OldPixels.MainBuffer.Contains(npEnumerator.Current))
+			if (!OldPixels.MainBuffer.Contains(npEnumerator.Current))
 			{
 				var NewPixel = npEnumerator.Current;
 
@@ -221,10 +203,103 @@ public unsafe partial class Canvas
 				LastPixel = NewPixel;
 			}
 			
-			FrontBuffer.OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
+			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
 		}
-		
-		FrontBuffer.SwapOldPixels();
+
+		OldPixels.MainBuffer.Clear();
+		OldPixels.Swap();
+	}
+
+	private PooledSet<Pixel> temp = new(1000, ClearMode.Never);
+
+	private void RenderPixels2(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	{
+		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
+
+		while (npEnumerator.MoveNext())
+		{
+			if (!OldPixels.MainBuffer.Remove(npEnumerator.Current))
+			{
+				//var NewPixel = npEnumerator.Current;
+				//
+				//RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+				//LastPixel = NewPixel;
+				temp.Add(npEnumerator.Current);
+			}
+
+			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
+		}
+
+		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
+
+		while (opEnumerator.MoveNext())
+		{
+			var NewPixel = new Pixel()
+			{
+				Index = opEnumerator.Current.Index,
+				Character = ' ',
+				Foreground = Color24.White,
+				Background = Color24.Black,
+				Style = 0
+			};
+
+			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+			LastPixel = NewPixel;
+		}
+
+		foreach (var p in temp)
+		{
+			var NewPixel = p;
+			
+			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+			LastPixel = NewPixel;
+		}
+
+		temp.Clear();
+		OldPixels.MainBuffer.Clear();
+		OldPixels.Swap();
+	}
+
+	private void RenderPixels3(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	{
+		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
+
+		while (opEnumerator.MoveNext())
+		{
+			if (!NewPixels.MainBuffer.Remove(opEnumerator.Current))
+			{
+				var NewPixel = new Pixel()
+				{
+					Index = opEnumerator.Current.Index,
+					Character = ' ',
+					Foreground = Color24.White,
+					Background = Color24.Black,
+					Style = 0
+				};
+
+				RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+				LastPixel = NewPixel;
+			}
+			else
+			{
+				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
+			}
+		}
+
+		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
+
+		while (npEnumerator.MoveNext())
+		{
+			var NewPixel = npEnumerator.Current;
+
+			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
+			LastPixel = NewPixel;
+
+			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
+		}
+
+		OldPixels.MainBuffer.Clear();
+		OldPixels.Swap();
 	}
 
 	private void RenderThreadProc()
@@ -235,7 +310,7 @@ public unsafe partial class Canvas
 
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 
-		RenderPixels(ref writer);
+		RenderPixels3(ref writer);
 
 		writer.Flush(); // Fill buffer with writer contents
 
@@ -287,6 +362,29 @@ public unsafe partial class Canvas
 			writer.Append(StyleTransitionSequences[ResetMask * SetMask]);
 
 			//AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
+		}
+
+		writer.Append(NewPixel.Character);
+	}
+
+	private void RenderClearPixel(ref Pixel LastPixel, ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	{
+		var LastIndex = LastPixel.Index;
+		var CurrentIndex = NewPixel.Index;
+
+		// First, handle position
+		if (CurrentIndex - LastIndex != 1)
+		{
+			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
+			{
+				int count = CurrentIndex - LastIndex - 1;
+				writer.AppendFormat($"\u001b[{count}C");            // If indices are on same line and spaced further than 1 cell apart, shift right
+			}
+			else
+			{
+				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
+				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");    // If anywhere else, set absolute position
+			}
 		}
 
 		writer.Append(NewPixel.Character);

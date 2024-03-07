@@ -1,6 +1,4 @@
 ﻿
-using System.Diagnostics.CodeAnalysis;
-
 namespace SharpCanvas;
 
 internal struct Pixel : IEqualityComparer<Pixel>, IComparable<Pixel>
@@ -22,7 +20,7 @@ internal struct Pixel : IEqualityComparer<Pixel>, IComparable<Pixel>
 
 	private int _hash;
 
-	public int GetHashCode(Pixel obj) => _hash;
+	public int GetHashCode(Pixel obj) => obj._hash;
 	public override int GetHashCode() => _hash;
 	
 	public int CompareTo(Pixel other) => GetHashCode().CompareTo(other.GetHashCode());

@@ -1,8 +1,6 @@
 ﻿using System.Text;
 using System.Collections.Concurrent;
 
-using Collections.Pooled;
-
 using SharpCanvas;
 using SharpCanvas.Codes;
 
@@ -15,7 +13,7 @@ var c = new Canvas();
 
 //	Console.Write("Retrieving frames... ");
 //	
-//	string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+//	string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
 //	ConcurrentQueue<string> Frames = new();
 //	
 //	Task t = Task.Run(delegate
@@ -53,7 +51,7 @@ int LastFPS = 0;
 System.Timers.Timer FPSTimer = new() { Interval = 1000 };
 FPSTimer.Elapsed += (sender, args) =>
 {
-	Console.Title = $"FPS: {CurrentFPS:N0}";// QF: {Frames.Count}";
+	Console.Title = $"FPS: {CurrentFPS:N0}";
 	LastFPS = CurrentFPS;
 	CurrentFPS = 0;
 };
@@ -108,33 +106,30 @@ while (Running)
 		}
 	}
 
-	//int fY = 0;
-	//
-	//while (Frames.IsEmpty);
-	//
-	//Frames.TryDequeue(out var frame);
-	//
-	//for (int i = 0; i < frame.Length; i++)
-	//{
-	//	if (frame[i] == '\n' || frame[i] == '\r')
-	//		fY++;
-	//	else// if (frame[i] == ' ')
-	//		c.WriteAt(i % 481, fY, frame[i], Color24.White, Color24.Black, 0);
-	//	//	else
-	//	//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
-	//}
-	//
-	//c.Flush();
+	//	int fY = 0;
+	//	
+	//	string frame = "";
+	//	
+	//	while (!Frames.TryDequeue(out frame));
+	//	
+	//	for (int i = 0; i < frame.Length; i++)
+	//	{
+	//		if (frame[i] == '\n' || frame[i] == '\r')
+	//			fY++;
+	//		else// if (frame[i] == ' ')
+	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.None);
+	//		//	else
+	//		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
+	//	}
+	//	
+	//	c.Flush();
 
 	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	DoRender();
 	
-	//Console.ReadKey(true);
-	
 	c.Flush();
-	
+
 	CurrentFPS++;
-	//f++;
 }
 
 void DoRender()

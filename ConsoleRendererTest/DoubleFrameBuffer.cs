@@ -1,6 +1,4 @@
 ﻿
-
-using System.Collections.Frozen;
 using Collections.Pooled;
 
 namespace SharpCanvas;
@@ -9,18 +7,18 @@ internal class FrameBuffer
 {
 	internal PooledDictionary<int, Pixel> IndexUpdates;
 	
-	internal FrozenSet<Pixel> NewPixels { get; private set; }
+	internal PooledSet<Pixel> NewPixels { get; private set; }
 	
 	internal PooledDoubleSetBuffer<Pixel> OldPixels;
 	
 	internal FrameBuffer(int Capacity)
 	{
-		IndexUpdates = new(1000, ClearMode.Never);
-		
+		IndexUpdates = new(Capacity, ClearMode.Never);
+		NewPixels = new(Capacity, ClearMode.Never);
 		OldPixels = new(Capacity);
 	}
 	
-	internal void ComputeNewPixels() => NewPixels = IndexUpdates.Values.ToFrozenSet();
+	//internal void ComputeNewPixels() => NewPixels = IndexUpdates.Values.ToFrozenSet();
 	
 	internal void SwapOldPixels() => OldPixels.Swap();
 }
