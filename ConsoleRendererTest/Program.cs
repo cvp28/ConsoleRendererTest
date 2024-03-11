@@ -13,7 +13,7 @@ var c = new Canvas();
 
 //	Console.Write("Retrieving frames... ");
 //	
-//	string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+//	string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
 //	ConcurrentQueue<string> Frames = new();
 //	
 //	Task t = Task.Run(delegate
@@ -117,15 +117,15 @@ while (Running)
 	//		if (frame[i] == '\n' || frame[i] == '\r')
 	//			fY++;
 	//		else// if (frame[i] == ' ')
-	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.None);
+	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.Bold);
 	//		//	else
 	//		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
 	//	}
 	//	
 	//	c.Flush();
-
-	c.WriteAt(X, Y, $"Concurrent Rendering!");
+	
 	DoRender();
+	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	
 	c.Flush();
 
