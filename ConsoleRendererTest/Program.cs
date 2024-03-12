@@ -11,6 +11,22 @@ Console.ReadKey(true);
 
 var c = new Canvas();
 
+//	Console.Write("Retrieving frames... ");
+//	
+//	string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+//	string[] Frames = new string[FramePaths.Length];
+//	
+//	await Task.Run(delegate
+//	{
+//		for (int i = 0; i < FramePaths.Length; i++)
+//			Frames[i] = File.ReadAllText(FramePaths[i]);
+//	});
+//	
+//	Console.WriteLine("done.");
+
+var Width = Console.WindowWidth;
+var Height = Console.WindowHeight;
+
 var InputQueue = new ConcurrentQueue<ConsoleKeyInfo>();
 var Running = true;
 
@@ -39,13 +55,13 @@ FPSTimer.Elapsed += (sender, args) =>
 
 FPSTimer.Start();
 
-var Width = Console.WindowWidth;
-var Height = Console.WindowHeight;
+
 
 int X = 10;
 int Y = 2;
 
 double shift = 0;
+int f = 0;
 
 while (Running)
 {
@@ -87,18 +103,32 @@ while (Running)
 		}
 	}
 
-	c.WriteAt(X, Y, $"Concurrent Rendering!");
-	//c.DrawBox(10, 5, 5, 5, "This is a window!");
+	//	int fY = 0;
+	//	
+	//	string frame = Frames[f];
+	//	
+	//	for (int i = 0; i < frame.Length; i++)
+	//	{
+	//		if (frame[i] == '\n' || frame[i] == '\r')
+	//			fY++;
+	//		else// if (frame[i] == ' ')
+	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.Blink);
+	//		//	else
+	//		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
+	//	}
+	//	
+	//	c.Flush();
+	//	
+	//	if (f == Frames.Length - 1)
+	//		f = 0;
+	//	else
+	//		f++;
 	
-	//c.WriteAt(10, 10, "Some text");
 	DoRender();
-
-	//c.WriteAt(X, Y, "Other text", new(255, 0, 0), new(255, 255, 255), StyleCode.Bold | StyleCode.Italic | StyleCode.Underlined);
-
-	//Thread.Sleep(1000);
+	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	
 	c.Flush();
-	
+
 	CurrentFPS++;
 }
 

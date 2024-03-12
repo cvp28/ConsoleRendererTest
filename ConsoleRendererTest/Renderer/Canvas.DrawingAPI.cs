@@ -107,14 +107,14 @@ public partial class Canvas
 			Style = StyleMask
 		};
 
-		NewPixel.CalculateHash();
 
 		// If this space is not actually going to be visible, cull it
-		//	if (Character == ' ' && Background == Color24.Black)
-		//		return;
+		if (Character == ' ' && Background == DefaultBackground)
+			return;
 		
+		NewPixel.CalculateHash();
 		IndexUpdates[Index] = NewPixel;
-
+		
 		//if (NewPixels.Any(p => p.Index == Index))
 		//{
 		//	NewPixels.Remove(NewPixels.First(p => p.Index == Index));
