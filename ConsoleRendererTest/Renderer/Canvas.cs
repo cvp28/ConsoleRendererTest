@@ -56,7 +56,8 @@ public unsafe partial class Canvas
 		
 		RenderThread = new(RenderThreadProc)
 		{
-			Name = "Render Thread"
+			Name = "Render Thread",
+			IsBackground = true
 		};
 		
 		RenderThread.Start();
@@ -146,7 +147,9 @@ public unsafe partial class Canvas
 	//		
 	//		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
 	//	}
-
+	
+	//private Mutex RenderMutex = new();
+	
 	private void ConcurrentFlush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
@@ -385,13 +388,13 @@ public unsafe partial class Canvas
 		
 		writer.Append(' ');
 	}
-
-	private string[] StyleTransitionSequences = new string[65025];
+	
+	private string[] StyleTransitionSequences = new string[65536];
 
 	private void PrecacheSequences()
 	{
-		for (int r = 0; r < 255; r++)
-			for (int s = 0; s < 255; s++)
+		for (int r = 0; r < 256; r++)
+			for (int s = 0; s < 256; s++)
 				StyleTransitionSequences[r * s] = GetStyleTransitionSequence((byte) r, (byte) s);
 	}
 
