@@ -5,22 +5,25 @@ namespace SharpCanvas;
 
 internal class FrameBuffer
 {
-	internal PooledDictionary<int, Pixel> IndexUpdates;
+	// Contains 
+	internal PooledDictionary<int, Pixel> ToClear { get; private set; }
 	
-	internal PooledSet<Pixel> NewPixels { get; private set; }
+	/// <summary>
+	/// Contains pixels currently on the screen that will persist to the next frame
+	/// </summary>
+	internal PooledSet<Pixel> ToSkip { get; private set; }
 	
-	internal PooledDoubleSetBuffer<Pixel> OldPixels;
+	/// <summary>
+	/// Contains pixels not currently on the screen that will be drawn for next frame
+	/// </summary>
+	internal PooledSet<Pixel> ToDraw { get; private set; }
 	
 	internal FrameBuffer(int Capacity)
 	{
-		IndexUpdates = new(Capacity, ClearMode.Never);
-		NewPixels = new(Capacity, ClearMode.Never);
-		OldPixels = new(Capacity);
+		ToClear = new(Capacity, ClearMode.Never);
+		ToSkip = new(Capacity, ClearMode.Never);
+		ToDraw = new(Capacity, ClearMode.Never);
 	}
-	
-	//internal void ComputeNewPixels() => NewPixels = IndexUpdates.Values.ToFrozenSet();
-	
-	internal void SwapOldPixels() => OldPixels.Swap();
 }
 
 /// <summary>
@@ -34,7 +37,7 @@ internal class DoubleFrameBuffer
 	internal FrameBuffer FrontBuffer { get; private set; }
 	internal FrameBuffer BackBuffer { get; private set; }
 	
-	internal DoubleFrameBuffer(int Capacity)
+	internal DoubleFrameBuffer(int Capacity = 1000)
 	{
 		_FrameBuffer1 = new(Capacity);
 		_FrameBuffer2 = new(Capacity);

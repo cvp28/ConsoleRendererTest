@@ -128,7 +128,7 @@ while (Running)
 	c.WriteAt(X, Y, $"Concurrent Rendering!");
 	
 	c.Flush();
-
+	
 	CurrentFPS++;
 }
 

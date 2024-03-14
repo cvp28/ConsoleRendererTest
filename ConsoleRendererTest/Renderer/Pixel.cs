@@ -9,9 +9,9 @@ internal struct Pixel : IEqualityComparer<Pixel>, IComparable<Pixel>
 	
 	public Color24 Foreground { get; init; }
 	public Color24 Background { get; init; }
-
+	
 	public byte Style { get; init; }
-
+	
 	public static bool operator ==(Pixel x, Pixel y) => x.Equals(y);
 	public static bool operator !=(Pixel x, Pixel y) => !x.Equals(y);
 	

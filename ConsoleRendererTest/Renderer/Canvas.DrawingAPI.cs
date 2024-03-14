@@ -106,24 +106,30 @@ public partial class Canvas
 			Background = Background,
 			Style = StyleMask
 		};
-
-
+		
 		// If this space is not actually going to be visible, cull it
 		if (Character == ' ' && Background == DefaultBackground)
 			return;
 		
 		NewPixel.CalculateHash();
-		IndexUpdates[Index] = NewPixel;
 		
-		//if (NewPixels.Any(p => p.Index == Index))
-		//{
-		//	NewPixels.Remove(NewPixels.First(p => p.Index == Index));
-		//	NewPixels.Add(NewPixel);
-		//	return;
-		//}
-		//
-		//if (!NewPixels.Contains(NewPixel))
-		//	NewPixels.Add(NewPixel);
+		// If we are added a pixel to the screen that was going to be cleared,
+		// then remove it from the clear list since we are going to overwrite or skip it anyways
+		if (BackBuffer.ToClear.TryGetValue(Index, out Pixel OldPixel))
+		{
+			BackBuffer.ToClear.Remove(Index);
+			
+			if (OldPixel == NewPixel)
+				BackBuffer.ToSkip.Add(NewPixel);
+			else
+				BackBuffer.ToDraw.Add(NewPixel);
+		}
+		else
+		{
+			BackBuffer.ToDraw.Add(NewPixel);
+		}
+		
+		return;
 	}
 	
 	/// <summary>

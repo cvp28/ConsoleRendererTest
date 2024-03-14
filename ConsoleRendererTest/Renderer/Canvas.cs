@@ -32,24 +32,24 @@ public unsafe partial class Canvas
 		Height = Console.WindowHeight;
 		
 		PrecacheSequences();
-
+		
 		#region Platform-specific stdout write delegates
 		if (OperatingSystem.IsWindows())
 		{
 			var Handle = Kernel32.GetStdHandle(-11);
-
+			
 			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
-				fixed (byte* buf = Buffer.Span)
-					Kernel32.WriteFile(Handle, buf, (uint) Buffer.Length, out _, nint.Zero);
+				using var hBuffer = Buffer.Pin();
+				Kernel32.WriteFile(Handle, (byte*) hBuffer.Pointer, (uint) Buffer.Length, out _, nint.Zero);
 			};
 		}
 		else if (OperatingSystem.IsLinux())
 		{
 			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
-				fixed (byte* buf = Buffer.Span)
-					Libc.Write(1, buf, (uint) Buffer.Length);
+				using var hBuffer = Buffer.Pin();
+				Libc.Write(1, (byte*) hBuffer.Pointer, (uint) Buffer.Length);
 			};
 		}
 		#endregion
@@ -69,7 +69,7 @@ public unsafe partial class Canvas
 	{
 		// Set up the screen state (set screen to full white on black and reset cursor to home)
 		Console.Write($"\u001b[0m\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', TotalCellCount)}\u001b[;H");
-
+		
 		// Set up render state
 		LastPixel = new()
 		{
@@ -79,7 +79,7 @@ public unsafe partial class Canvas
 			Background = new(0, 0, 0),
 			Style = 0
 		};
-
+		
 		LastPixel.CalculateHash();
 	}
 
@@ -90,24 +90,32 @@ public unsafe partial class Canvas
 	/// <param name="NewHeight">The new height</param>
 	public void Resize(int NewWidth = 0, int NewHeight = 0)
 	{
-		while (DoRender) ;
+		while (DoRender);
 
 		if (NewWidth == 0)
 			NewWidth = Console.WindowWidth;
-
+		
 		if (NewHeight == 0)
 			NewHeight = Console.WindowHeight;
-
+		
 		Width = NewWidth;
 		Height = NewHeight;
-
+		
 		Console.Clear();
-
-		NewPixels.MainBuffer.Clear();
-		NewPixels.SecondaryBuffer.Clear();
-
-		OldPixels.MainBuffer.Clear();
-		OldPixels.SecondaryBuffer.Clear();
+		
+		FrontBuffer.ToDraw.Clear();
+		FrontBuffer.ToClear.Clear();
+		FrontBuffer.ToSkip.Clear();
+		
+		BackBuffer.ToDraw.Clear();
+		BackBuffer.ToClear.Clear();
+		BackBuffer.ToSkip.Clear();
+		
+		//NewPixels.MainBuffer.Clear();
+		//NewPixels.SecondaryBuffer.Clear();
+		//
+		//OldPixels.MainBuffer.Clear();
+		//OldPixels.SecondaryBuffer.Clear();
 
 		InitScreen();
 	}
@@ -124,74 +132,55 @@ public unsafe partial class Canvas
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
 
-	public void Flush() => ConcurrentFlush();
-
-	//	public void SynchronousFlush()
-	//	{
-	//		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-	//		if (!IndexUpdates.Any())
-	//			return;
-	//		
-	//		foreach (var p in IndexUpdates.Values) NewPixels.Add(p);
-	//		
-	//		using var FinalFrameTempBuffer = Utf8String.CreateWriter(out var writer);
-	//		
-	//		RenderPixels(ref writer);
-	//		
-	//		writer.Flush();
-	//		
-	//		if (FinalFrameTempBuffer.WrittenCount == 0)
-	//			return;
-	//		
-	//		//byte[] FinalFrame = Encoding.UTF8.GetBytes(FinalWriteBuffer.ToString());
-	//		
-	//		PlatformWriteStdout(FinalFrameTempBuffer.WrittenMemory);
-	//	}
-	
-	//private Mutex RenderMutex = new();
-	
-	private void ConcurrentFlush()
+	public void Flush()
 	{
 		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-		if (!IndexUpdates.Any())
-			return;
+		//	if (!BackBuffer.ToDraw.Any() && !BackBuffer.ToClear.Any())
+		//		return;
 		
-		foreach (var p in IndexUpdates.Values)
-			NewPixels.SecondaryBuffer.Add(p);
+		//	foreach (var p in IndexUpdates.Values)
+		//		NewPixels.SecondaryBuffer.Add(p);
 		
 		while (DoRender);
 		
-		NewPixels.Swap();
-		OldPixels.Swap();
+		FrameBuffers.Swap();
+		
+		//	NewPixels.Swap();
+		//	OldPixels.Swap();
 		
 		DoRender = true;
 		
-		foreach (var p in IndexUpdates.Values)
-			OldPixels.SecondaryBuffer.Add(p);
+		BackBuffer.ToClear.Clear();
 		
-		IndexUpdates.Clear();
-		NewPixels.SecondaryBuffer.Clear();
+		// Accessing FrontBuffer from the main thread would otherwise be wrong
+		// But, we are only reading it here - so it should be fine
+		
+		foreach (var p in FrontBuffer.ToSkip)
+			BackBuffer.ToClear[p.Index] = p;
+		
+		foreach (var p in FrontBuffer.ToDraw)
+			BackBuffer.ToClear[p.Index] = p;
+		
+		BackBuffer.ToDraw.Clear();
+		BackBuffer.ToSkip.Clear();
+		
+		//IndexUpdates.Clear();
+		//NewPixels.SecondaryBuffer.Clear();
 	}
 
-	private PooledDoubleSetBuffer<Pixel> OldPixels = new();
-	private PooledDoubleSetBuffer<Pixel> NewPixels = new();
+	//	private PooledDoubleSetBuffer<Pixel> OldPixels = new();
+	//	private PooledDoubleSetBuffer<Pixel> NewPixels = new();
 
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
-		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
-		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
+		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
+		var drawEnumerator = FrontBuffer.ToDraw.GetEnumerator();
 		
-		while (opEnumerator.MoveNext())
-		{
-			if (NewPixels.MainBuffer.Contains(opEnumerator.Current))
-			{
-				OldPixels.SecondaryBuffer.Add(opEnumerator.Current);
-				continue;
-			}
-			
+		while (clearEnumerator.MoveNext())
+		{	
 			var NewPixel = new Pixel()
 			{
-				Index = opEnumerator.Current.Index,
+				Index = clearEnumerator.Current,
 				Character = ' ',
 				Foreground = Color24.White,
 				Background = Color24.Black,
@@ -201,20 +190,14 @@ public unsafe partial class Canvas
 			RenderPixel(ref NewPixel, ref writer);
 		}
 
-		while (npEnumerator.MoveNext())
+		while (drawEnumerator.MoveNext())
 		{
-			if (!OldPixels.MainBuffer.Contains(npEnumerator.Current))
-			{
-				var NewPixel = npEnumerator.Current;
-
-				RenderPixel(ref NewPixel, ref writer);
-			}
-			
-			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
+			var NewPixel = drawEnumerator.Current;
+			RenderPixel(ref NewPixel, ref writer);
 		}
 
-		OldPixels.MainBuffer.Clear();
-		OldPixels.Swap();
+		//	OldPixels.MainBuffer.Clear();
+		//	OldPixels.Swap();
 	}
 
 	//private PooledSet<Pixel> temp = new(1000, ClearMode.Never);
@@ -266,39 +249,46 @@ public unsafe partial class Canvas
 	//		OldPixels.MainBuffer.Clear();
 	//		OldPixels.Swap();
 	//	}
-
-	private void RenderPixels3(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	{
-		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
-		
-		while (opEnumerator.MoveNext())
-		{
-			if (!NewPixels.MainBuffer.Remove(opEnumerator.Current))
-			{
-				var NewPixel = new Pixel()
-				{
-					Index = opEnumerator.Current.Index,
-					Character = ' ',
-					Foreground = Color24.White,
-					Background = Color24.Black,
-					Style = 0
-				};
-				
-				RenderPixel(ref NewPixel, ref writer);
-			}
-		}
-		
-		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
-		
-		while (npEnumerator.MoveNext())
-		{
-			var NewPixel = npEnumerator.Current;
-			
-			RenderPixel(ref NewPixel, ref writer);
-		}
-		
-		OldPixels.MainBuffer.Clear();
-	}
+	
+	private DoubleFrameBuffer FrameBuffers = new();
+	
+	private FrameBuffer BackBuffer => FrameBuffers.BackBuffer;
+	private FrameBuffer FrontBuffer => FrameBuffers.FrontBuffer;
+	
+	//	private void RenderPixels3(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	//	{
+	//		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
+	//		
+	//		while (opEnumerator.MoveNext())
+	//		{
+	//			if (!NewPixels.MainBuffer.Remove(opEnumerator.Current))
+	//			{
+	//				var NewPixel = new Pixel()
+	//				{
+	//					Index = opEnumerator.Current.Index,
+	//					Character = ' ',
+	//					Foreground = Color24.White,
+	//					Background = Color24.Black,
+	//					Style = 0
+	//				};
+	//				
+	//				//NewPixel.CalculateHash();
+	//				
+	//				RenderPixel(ref NewPixel, ref writer);
+	//			}
+	//		}
+	//		
+	//		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
+	//		
+	//		while (npEnumerator.MoveNext())
+	//		{
+	//			var NewPixel = npEnumerator.Current;
+	//			
+	//			RenderPixel(ref NewPixel, ref writer);
+	//		}
+	//		
+	//		OldPixels.MainBuffer.Clear();
+	//	}
 
 	private void RenderThreadProc()
 	{
@@ -308,7 +298,7 @@ public unsafe partial class Canvas
 		
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 		
-		RenderPixels3(ref writer);
+		RenderPixels(ref writer);
 		
 		writer.Flush(); // Fill buffer with writer contents
 		
