@@ -7,6 +7,7 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using System.Diagnostics;
 
 public unsafe partial class Canvas
 {
@@ -131,29 +132,29 @@ public unsafe partial class Canvas
 
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
-
+	
+	public double MainThreadWaitMs { get; private set; }
+	public double RenderThreadWaitMs { get; private set; }
+	
+	private Stopwatch MainThreadWaitTimer = new();
+	private Stopwatch RenderThreadWaitTimer = new();
+	
 	public void Flush()
 	{
-		// This line of code will REALLY start to shine when I use eventually build a UI library using this renderer
-		//	if (!BackBuffer.ToDraw.Any() && !BackBuffer.ToClear.Any())
-		//		return;
-		
-		//	foreach (var p in IndexUpdates.Values)
-		//		NewPixels.SecondaryBuffer.Add(p);
-		
-		while (DoRender);
+		// Time our wait for the render thread to finish
+		//Thread.MemoryBarrier();
+		MainThreadWaitTimer.Restart();
+		while (DoRender) Thread.Yield();
+		MainThreadWaitMs = MainThreadWaitTimer.Elapsed.TotalMilliseconds;
 		
 		FrameBuffers.Swap();
-		
-		//	NewPixels.Swap();
-		//	OldPixels.Swap();
 		
 		DoRender = true;
 		
 		BackBuffer.ToClear.Clear();
 		
 		// Accessing FrontBuffer from the main thread would otherwise be wrong
-		// But, we are only reading it here - so it should be fine
+		// But, we are only reading from it here - so it should be fine
 		
 		foreach (var p in FrontBuffer.ToSkip)
 			BackBuffer.ToClear[p.Index] = p;
@@ -163,14 +164,18 @@ public unsafe partial class Canvas
 		
 		BackBuffer.ToDraw.Clear();
 		BackBuffer.ToSkip.Clear();
-		
-		//IndexUpdates.Clear();
-		//NewPixels.SecondaryBuffer.Clear();
 	}
+	
+	//	[MethodImpl(MethodImplOptions.NoOptimization)]
+	//	private void WhenRendererAvailable(Action Func)
+	//	{
+	//		
+	//	}
 
 	//	private PooledDoubleSetBuffer<Pixel> OldPixels = new();
 	//	private PooledDoubleSetBuffer<Pixel> NewPixels = new();
-
+	
+	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
@@ -178,16 +183,16 @@ public unsafe partial class Canvas
 		
 		while (clearEnumerator.MoveNext())
 		{	
-			var NewPixel = new Pixel()
-			{
-				Index = clearEnumerator.Current,
-				Character = ' ',
-				Foreground = Color24.White,
-				Background = Color24.Black,
-				Style = 0
-			};
+			//	var NewPixel = new Pixel()
+			//	{
+			//		Index = clearEnumerator.Current,
+			//		Character = ' ',
+			//		Foreground = Color24.White,
+			//		Background = Color24.Black,
+			//		Style = 0
+			//	};
 			
-			RenderPixel(ref NewPixel, ref writer);
+			RenderClearPixel(clearEnumerator.Current, ref writer);
 		}
 
 		while (drawEnumerator.MoveNext())
@@ -293,8 +298,9 @@ public unsafe partial class Canvas
 	private void RenderThreadProc()
 	{
 	loop_start:
-		
-		while (!DoRender);
+		RenderThreadWaitTimer.Restart();
+		while (!DoRender) Thread.Yield();
+		RenderThreadWaitMs = RenderThreadWaitTimer.Elapsed.TotalMilliseconds;
 		
 		var FinalFrame = Utf8String.CreateWriter(out var writer);
 		
@@ -316,6 +322,7 @@ public unsafe partial class Canvas
 	
 	private int GetY(int Index) => Index / Width;
 	
+	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderPixel(ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
@@ -356,7 +363,7 @@ public unsafe partial class Canvas
 		LastPixel = NewPixel;
 	}
 	
-	private void RenderClearPixel(ref Pixel LastPixel, int CurrentIndex, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	private void RenderClearPixel(int CurrentIndex, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
 		//var CurrentIndex = NewPixel.Index;
@@ -377,6 +384,17 @@ public unsafe partial class Canvas
 		}
 		
 		writer.Append(' ');
+		
+		//LastPixel.Index = CurrentIndex;
+		
+		LastPixel = new Pixel()
+		{
+			Index = CurrentIndex,
+			Character = ' ',
+			Foreground = Color24.White,
+			Background = Color24.Black,
+			Style = 0
+		};
 	}
 	
 	private string[] StyleTransitionSequences = new string[65536];

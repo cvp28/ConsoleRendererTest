@@ -94,10 +94,14 @@ public partial class Canvas
 		}
 	}
 
-	// Entry point for modifying the pixel array
+	// Entry point for modifying the screen
 	// Handles pixel modifications and optimizes redundant ones away when able
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
 	{
+		// If this space is not actually going to be visible, cull it
+		if (Character == ' ' && Background == DefaultBackground)
+			return;
+		
 		var NewPixel = new Pixel()
 		{
 			Index = Index,
@@ -106,10 +110,6 @@ public partial class Canvas
 			Background = Background,
 			Style = StyleMask
 		};
-		
-		// If this space is not actually going to be visible, cull it
-		if (Character == ' ' && Background == DefaultBackground)
-			return;
 		
 		NewPixel.CalculateHash();
 		

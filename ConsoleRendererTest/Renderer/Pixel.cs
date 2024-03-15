@@ -3,7 +3,7 @@ namespace SharpCanvas;
 
 internal struct Pixel : IEqualityComparer<Pixel>, IComparable<Pixel>
 {
-	public int Index { get; init; }
+	public int Index { get; internal set; }
 	
 	public char Character { get; init; }
 	

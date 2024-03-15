@@ -124,8 +124,11 @@ while (Running)
 	//	else
 	//		f++;
 	
-	DoRender();
-	c.WriteAt(X, Y, $"Concurrent Rendering!");
+	//DoRender();
+	c.WriteAt(X, Y, "Concurrent Rendering!", Color24.White, Color24.Black, StyleCode.Underlined);
+	
+	c.WriteAt(0, 0, $"MT Wait: {c.MainThreadWaitMs:F4}");
+	c.WriteAt(0, 1, $"RT Wait: {c.RenderThreadWaitMs:F4}");
 	
 	c.Flush();
 	
