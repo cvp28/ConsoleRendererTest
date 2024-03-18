@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 using Collections.Pooled;
@@ -7,7 +8,6 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
-using System.Diagnostics;
 
 public unsafe partial class Canvas
 {
@@ -20,6 +20,7 @@ public unsafe partial class Canvas
 	private PooledDictionary<int, Pixel> IndexUpdates = new(1000, ClearMode.Never);
 	
 	private Thread RenderThread;
+	private Thread WriteThread;
 
 	public bool DoRender = false;
 
@@ -58,10 +59,19 @@ public unsafe partial class Canvas
 		RenderThread = new(RenderThreadProc)
 		{
 			Name = "Render Thread",
-			IsBackground = true
+			IsBackground = true,
+			Priority = ThreadPriority.AboveNormal
+		};
+
+		WriteThread = new(WriteThreadProc)
+		{
+			Name = "Write Thread",
+			IsBackground = true,
+			Priority = ThreadPriority.Normal
 		};
 		
 		RenderThread.Start();
+		WriteThread.Start();
 		
 		InitScreen();
 	}
@@ -111,18 +121,12 @@ public unsafe partial class Canvas
 		BackBuffer.ToDraw.Clear();
 		BackBuffer.ToClear.Clear();
 		BackBuffer.ToSkip.Clear();
-		
-		//NewPixels.MainBuffer.Clear();
-		//NewPixels.SecondaryBuffer.Clear();
-		//
-		//OldPixels.MainBuffer.Clear();
-		//OldPixels.SecondaryBuffer.Clear();
 
 		InitScreen();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private int ScreenIX(int X, int Y) => (Y * Width + X) % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
+	private int ScreenIX(int X, int Y) => ((Y % Height) * Width + (X % Width));// % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
 
 	public void DoBufferDump(int Quantity)
 	{
@@ -135,17 +139,14 @@ public unsafe partial class Canvas
 	
 	public double MainThreadWaitMs { get; private set; }
 	public double RenderThreadWaitMs { get; private set; }
-	
-	private Stopwatch MainThreadWaitTimer = new();
-	private Stopwatch RenderThreadWaitTimer = new();
+	public double WriteThreadWaitMs { get; private set; }
 	
 	public void Flush()
 	{
 		// Time our wait for the render thread to finish
-		//Thread.MemoryBarrier();
-		MainThreadWaitTimer.Restart();
+		var start = Stopwatch.GetTimestamp();
 		while (DoRender) Thread.Yield();
-		MainThreadWaitMs = MainThreadWaitTimer.Elapsed.TotalMilliseconds;
+		MainThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
 		
 		FrameBuffers.Swap();
 		
@@ -166,158 +167,78 @@ public unsafe partial class Canvas
 		BackBuffer.ToSkip.Clear();
 	}
 	
-	//	[MethodImpl(MethodImplOptions.NoOptimization)]
-	//	private void WhenRendererAvailable(Action Func)
-	//	{
-	//		
-	//	}
-
-	//	private PooledDoubleSetBuffer<Pixel> OldPixels = new();
-	//	private PooledDoubleSetBuffer<Pixel> NewPixels = new();
-	
-	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
-		var drawEnumerator = FrontBuffer.ToDraw.GetEnumerator();
-		
-		while (clearEnumerator.MoveNext())
-		{	
-			//	var NewPixel = new Pixel()
-			//	{
-			//		Index = clearEnumerator.Current,
-			//		Character = ' ',
-			//		Foreground = Color24.White,
-			//		Background = Color24.Black,
-			//		Style = 0
-			//	};
-			
-			RenderClearPixel(clearEnumerator.Current, ref writer);
-		}
+		//var drawEnumerator = FrontBuffer.ToDraw.GetEnumerator();
 
-		while (drawEnumerator.MoveNext())
+		while (clearEnumerator.MoveNext())	
+			RenderClearPixel(clearEnumerator.Current, ref writer);
+
+		for (int i = 0; i < FrontBuffer.ToDraw.Span.Length; i++)
 		{
-			var NewPixel = drawEnumerator.Current;
+			var NewPixel = FrontBuffer.ToDraw.Span[i];
 			RenderPixel(ref NewPixel, ref writer);
 		}
-
-		//	OldPixels.MainBuffer.Clear();
-		//	OldPixels.Swap();
 	}
-
-	//private PooledSet<Pixel> temp = new(1000, ClearMode.Never);
-
-	//	private void RenderPixels2(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	//	{
-	//		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
-	//	
-	//		while (npEnumerator.MoveNext())
-	//		{
-	//			if (!OldPixels.MainBuffer.Remove(npEnumerator.Current))
-	//			{
-	//				//var NewPixel = npEnumerator.Current;
-	//				//
-	//				//RenderPixel(ref LastPixel, ref NewPixel, ref writer);
-	//				//LastPixel = NewPixel;
-	//				temp.Add(npEnumerator.Current);
-	//			}
-	//	
-	//			OldPixels.SecondaryBuffer.Add(npEnumerator.Current);
-	//		}
-	//		
-	//		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
-	//		
-	//		while (opEnumerator.MoveNext())
-	//		{
-	//			var NewPixel = new Pixel()
-	//			{
-	//				Index = opEnumerator.Current.Index,
-	//				Character = ' ',
-	//				Foreground = Color24.White,
-	//				Background = Color24.Black,
-	//				Style = 0
-	//			};
-	//	
-	//			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
-	//			LastPixel = NewPixel;
-	//		}
-	//		
-	//		foreach (var p in temp)
-	//		{
-	//			var NewPixel = p;
-	//			
-	//			RenderPixel(ref LastPixel, ref NewPixel, ref writer);
-	//			LastPixel = NewPixel;
-	//		}
-	//	
-	//		temp.Clear();
-	//		OldPixels.MainBuffer.Clear();
-	//		OldPixels.Swap();
-	//	}
 	
-	private DoubleFrameBuffer FrameBuffers = new();
+	private DoubleRenderBuffer FrameBuffers = new(300);
 	
-	private FrameBuffer BackBuffer => FrameBuffers.BackBuffer;
-	private FrameBuffer FrontBuffer => FrameBuffers.FrontBuffer;
-	
-	//	private void RenderPixels3(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	//	{
-	//		var opEnumerator = OldPixels.MainBuffer.GetEnumerator();
-	//		
-	//		while (opEnumerator.MoveNext())
-	//		{
-	//			if (!NewPixels.MainBuffer.Remove(opEnumerator.Current))
-	//			{
-	//				var NewPixel = new Pixel()
-	//				{
-	//					Index = opEnumerator.Current.Index,
-	//					Character = ' ',
-	//					Foreground = Color24.White,
-	//					Background = Color24.Black,
-	//					Style = 0
-	//				};
-	//				
-	//				//NewPixel.CalculateHash();
-	//				
-	//				RenderPixel(ref NewPixel, ref writer);
-	//			}
-	//		}
-	//		
-	//		var npEnumerator = NewPixels.MainBuffer.GetEnumerator();
-	//		
-	//		while (npEnumerator.MoveNext())
-	//		{
-	//			var NewPixel = npEnumerator.Current;
-	//			
-	//			RenderPixel(ref NewPixel, ref writer);
-	//		}
-	//		
-	//		OldPixels.MainBuffer.Clear();
-	//	}
+	private RenderBuffer BackBuffer => FrameBuffers.BackBuffer;
+	private RenderBuffer FrontBuffer => FrameBuffers.FrontBuffer;
 
 	private void RenderThreadProc()
 	{
 	loop_start:
-		RenderThreadWaitTimer.Restart();
+		var start = Stopwatch.GetTimestamp();
 		while (!DoRender) Thread.Yield();
-		RenderThreadWaitMs = RenderThreadWaitTimer.Elapsed.TotalMilliseconds;
-		
-		var FinalFrame = Utf8String.CreateWriter(out var writer);
+		RenderThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+		DoubleWriteBuffer.BackBuffer = Utf8String.CreateWriter(out var writer);
 		
 		RenderPixels(ref writer);
 		
 		writer.Flush(); // Fill buffer with writer contents
-		
-		if (FinalFrame.WrittenCount != 0)
-			PlatformWriteStdout(FinalFrame.WrittenMemory);
-		
-		FinalFrame.Dispose();
 		writer.Dispose();
+
+		while (DoWrite) Thread.Yield();
+
+		DoubleWriteBuffer.Swap();
+
+		DoWrite = true;
+
+		//if (FinalFrame.WrittenCount != 0)
+		//	PlatformWriteStdout(FinalFrame.WrittenMemory);
+		
+		//FinalFrame.Dispose();
 		
 		DoRender = false;
 		goto loop_start;
 	}
-	
+
+	private bool DoWrite = false;
+	private DoubleFrameBuffer DoubleWriteBuffer = new();
+
+	private Utf8StringBuffer FrontWriteBuffer => DoubleWriteBuffer.FrontBuffer;
+	private Utf8StringBuffer BackWriteBuffer => DoubleWriteBuffer.BackBuffer;
+
+	private void WriteThreadProc()
+	{
+	loop_start:
+		var start = Stopwatch.GetTimestamp();
+		while (!DoWrite) Thread.Yield();
+		WriteThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+		if (FrontWriteBuffer.WrittenCount != 0)
+			PlatformWriteStdout(FrontWriteBuffer.WrittenMemory);
+
+		DoubleWriteBuffer.DisposeFrontBuffer();
+
+		DoWrite = false;
+		goto loop_start;
+	}
+
 	private Pixel LastPixel;
 	
 	private int GetY(int Index) => Index / Width;
@@ -362,7 +283,8 @@ public unsafe partial class Canvas
 		writer.Append(NewPixel.Character);
 		LastPixel = NewPixel;
 	}
-	
+
+	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderClearPixel(int CurrentIndex, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
@@ -385,16 +307,16 @@ public unsafe partial class Canvas
 		
 		writer.Append(' ');
 		
-		//LastPixel.Index = CurrentIndex;
+		LastPixel.Index = CurrentIndex;
 		
-		LastPixel = new Pixel()
-		{
-			Index = CurrentIndex,
-			Character = ' ',
-			Foreground = Color24.White,
-			Background = Color24.Black,
-			Style = 0
-		};
+		//LastPixel = new Pixel()
+		//{
+		//	Index = CurrentIndex,
+		//	Character = ' ',
+		//	Foreground = Color24.White,
+		//	Background = Color24.Black,
+		//	Style = 0
+		//};
 	}
 	
 	private string[] StyleTransitionSequences = new string[65536];
