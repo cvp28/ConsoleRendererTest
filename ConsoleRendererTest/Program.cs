@@ -11,15 +11,15 @@ Console.ReadKey(true);
 
 var c = new Canvas();
 
-Console.Write("Retrieving frames... ");
-string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
-string[] Frames = new string[FramePaths.Length];
-await Task.Run(delegate
-{
-	for (int i = 0; i < FramePaths.Length; i++)
-		Frames[i] = File.ReadAllText(FramePaths[i]);
-});
-Console.WriteLine("done.");
+//	Console.Write("Retrieving frames... ");
+//	string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+//	string[] Frames = new string[FramePaths.Length];
+//	await Task.Run(delegate
+//	{
+//		for (int i = 0; i < FramePaths.Length; i++)
+//			Frames[i] = File.ReadAllText(FramePaths[i]);
+//	});
+//	Console.WriteLine("done.");
 
 var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
@@ -100,35 +100,35 @@ while (Running)
 		}
 	}
 
-	int fY = 0;
-	
-	string frame = Frames[f];
-	
-	for (int i = 0; i < frame.Length; i++)
-	{
-		if (frame[i] == '\n' || frame[i] == '\r')
-			fY++;
-		else// if (frame[i] == ' ')
-			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.Blink);
-		//	else
-		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
-	}
-	
-	c.Flush();
-	
-	if (f == Frames.Length - 1)
-		f = 0;
-	else
-		f++;
-	
-	//	//DoRender();
-	//	c.WriteAt(X, Y, "waaahhhhttttt");
+	//	int fY = 0;
 	//	
-	//	c.WriteAt(0, 0, $"MT Wait: {c.MainThreadWaitMs:F4}");
-	//	c.WriteAt(0, 1, $"RT Wait: {c.RenderThreadWaitMs:F4}");
-	//	c.WriteAt(0, 2, $"WT Wait: {c.WriteThreadWaitMs:F4}");
+	//	string frame = Frames[f];
+	//	
+	//	for (int i = 0; i < frame.Length; i++)
+	//	{
+	//		if (frame[i] == '\n' || frame[i] == '\r')
+	//			fY++;
+	//		else// if (frame[i] == ' ')
+	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.Blink);
+	//		//	else
+	//		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
+	//	}
 	//	
 	//	c.Flush();
+	//	
+	//	if (f == Frames.Length - 1)
+	//		f = 0;
+	//	else
+	//		f++;
+	
+	DoRender();
+	c.WriteAt(X, Y, "waaahhhhttttt");
+	
+	c.WriteAt(0, 0, $"MT Wait: {c.MainThreadWait.TotalMicroseconds}");
+	c.WriteAt(0, 1, $"RT Wait: {c.RenderThreadWait.TotalMicroseconds}");
+	c.WriteAt(0, 2, $"WT Wait: {c.WriteThreadWait.TotalMicroseconds}");
+	
+	c.Flush();
 	
 	CurrentFPS++;
 }

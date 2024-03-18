@@ -137,18 +137,26 @@ public unsafe partial class Canvas
 		File.AppendAllText(@".\BufferDump.txt", "Buffer Dump\n\n");
 	}
 	
-	public double MainThreadWaitMs { get; private set; }
-	public double RenderThreadWaitMs { get; private set; }
-	public double WriteThreadWaitMs { get; private set; }
+	public TimeSpan MainThreadWait { get; private set; }
+	public TimeSpan RenderThreadWait { get; private set; }
+	public TimeSpan WriteThreadWait { get; private set; }
+	
+	private TimeSpan ExecuteTimed(Action ActionToMeasure)
+	{
+		var start = Stopwatch.GetTimestamp();
+		ActionToMeasure();
+		return Stopwatch.GetElapsedTime(start);
+	}
 	
 	public void Flush()
-	{
+	{	
 		// Time our wait for the render thread to finish
-		var start = Stopwatch.GetTimestamp();
-		while (DoRender) Thread.Yield();
-		MainThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+		MainThreadWait = ExecuteTimed(delegate
+		{
+			while (DoRender) Thread.Yield();
+		});
 		
-		FrameBuffers.Swap();
+		RenderBuffers.Swap();
 		
 		DoRender = true;
 		
@@ -183,17 +191,18 @@ public unsafe partial class Canvas
 		}
 	}
 	
-	private DoubleRenderBuffer FrameBuffers = new(300);
+	private DoubleRenderBuffer RenderBuffers = new(300);
 	
-	private RenderBuffer BackBuffer => FrameBuffers.BackBuffer;
-	private RenderBuffer FrontBuffer => FrameBuffers.FrontBuffer;
+	private RenderBuffer BackBuffer => RenderBuffers.BackBuffer;
+	private RenderBuffer FrontBuffer => RenderBuffers.FrontBuffer;
 
 	private void RenderThreadProc()
 	{
 	loop_start:
-		var start = Stopwatch.GetTimestamp();
-		while (!DoRender) Thread.Yield();
-		RenderThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+		RenderThreadWait = ExecuteTimed(delegate
+		{
+			while (!DoRender) Thread.Yield();
+		});
 
 		DoubleWriteBuffer.BackBuffer = Utf8String.CreateWriter(out var writer);
 		
@@ -203,15 +212,10 @@ public unsafe partial class Canvas
 		writer.Dispose();
 
 		while (DoWrite) Thread.Yield();
-
-		DoubleWriteBuffer.Swap();
-
-		DoWrite = true;
-
-		//if (FinalFrame.WrittenCount != 0)
-		//	PlatformWriteStdout(FinalFrame.WrittenMemory);
 		
-		//FinalFrame.Dispose();
+		DoubleWriteBuffer.Swap();
+		
+		DoWrite = true;
 		
 		DoRender = false;
 		goto loop_start;
@@ -226,15 +230,16 @@ public unsafe partial class Canvas
 	private void WriteThreadProc()
 	{
 	loop_start:
-		var start = Stopwatch.GetTimestamp();
-		while (!DoWrite) Thread.Yield();
-		WriteThreadWaitMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+		WriteThreadWait = ExecuteTimed(delegate
+		{
+			while (!DoWrite) Thread.Yield();
+		});
 
 		if (FrontWriteBuffer.WrittenCount != 0)
 			PlatformWriteStdout(FrontWriteBuffer.WrittenMemory);
 
 		DoubleWriteBuffer.DisposeFrontBuffer();
-
+		
 		DoWrite = false;
 		goto loop_start;
 	}
