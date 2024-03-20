@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿#define BAD_APPLE
+
+using System.Text;
 using System.Collections.Concurrent;
 
 using SharpCanvas;
@@ -11,15 +13,17 @@ Console.ReadKey(true);
 
 var c = new Canvas();
 
-//	Console.Write("Retrieving frames... ");
-//	string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
-//	string[] Frames = new string[FramePaths.Length];
-//	await Task.Run(delegate
-//	{
-//		for (int i = 0; i < FramePaths.Length; i++)
-//			Frames[i] = File.ReadAllText(FramePaths[i]);
-//	});
-//	Console.WriteLine("done.");
+#if BAD_APPLE
+Console.Write("Retrieving frames... ");
+string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+string[] Frames = new string[FramePaths.Length];
+await Task.Run(delegate
+{
+	for (int i = 0; i < FramePaths.Length; i++)
+		Frames[i] = File.ReadAllText(FramePaths[i]);
+});
+Console.WriteLine("done.");
+#endif
 
 var Width = Console.WindowWidth;
 var Height = Console.WindowHeight;
@@ -51,8 +55,6 @@ FPSTimer.Elapsed += (sender, args) =>
 };
 
 FPSTimer.Start();
-
-
 
 int X = 0;
 int Y = 3;
@@ -100,37 +102,37 @@ while (Running)
 		}
 	}
 
-	//	int fY = 0;
-	//	
-	//	string frame = Frames[f];
-	//	
-	//	for (int i = 0; i < frame.Length; i++)
-	//	{
-	//		if (frame[i] == '\n' || frame[i] == '\r')
-	//			fY++;
-	//		else// if (frame[i] == ' ')
-	//			c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, StyleCode.Blink);
-	//		//	else
-	//		//		c.WriteAt(i % 482, fY, frame[i], Color24.White, Color24.Black, (StyleCode) Random.Shared.Next(1, 256));
-	//	}
-	//	
-	//	c.Flush();
-	//	
-	//	if (f == Frames.Length - 1)
-	//		f = 0;
-	//	else
-	//		f++;
+#if BAD_APPLE
+	int fY = 0;
 	
-	//DoRender();
+	string frame = Frames[f];
+	
+	for (int i = 0; i < frame.Length; i++)
+	{
+		if (frame[i] == '\n' || frame[i] == '\r')
+			fY++;
+		else
+			c.WriteAt(i % 482, fY, frame[i]);
+	}
+	
+	c.Flush();
+	
+	if (f == Frames.Length - 1)
+		f = 0;
+	else
+		f++;
+#else
+	DoRender();
 	c.WriteAt(X, Y, "waaahhhhttttt");
 	
-	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns");
+	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns", Color24.White, Color24.Black, StyleCode.Blink);
 	c.WriteAt(0, 1, $"RT-MT Wait: {c.RenderThreadMTWait.TotalNanoseconds,-7} ns");
 	c.WriteAt(0, 2, $"RT-WT Wait: {c.RenderThreadWTWait.TotalNanoseconds,-7} ns");
 	c.WriteAt(0, 3, $"WT-RT Wait: {c.WriteThreadWait.TotalNanoseconds,-7} ns");
 	
 	c.Flush();
-	
+#endif
+
 	CurrentFPS++;
 }
 

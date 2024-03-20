@@ -6,23 +6,18 @@ using Codes;
 
 public partial class Canvas
 {
-	public Color24 DefaultForeground = Color24.White;
-	public Color24 DefaultBackground = Color24.Black;
-	
+	public Color24 DefaultForeground { get; set; } = Color24.White;
+	public Color24 DefaultBackground { get; set; } = Color24.Black;
 	
 	public void WriteAt(int X, int Y, string Text) => WriteAt(X, Y, Text, DefaultForeground, DefaultBackground, StyleCode.None);
-
+	
+	public void WriteAt(int X, int Y, char Character) => WriteAt(X, Y, Character, DefaultForeground, DefaultBackground, StyleCode.None);
+	
 	public void WriteAt(int X, int Y, string Text, Color24 Foreground, Color24 Background, StyleCode Style)
 	{
 		for (int i = 0; i < Text.Length; i++)
-		{
-			int Index = ScreenIX(X + i, Y);
-			
-			TryModifyPixel(Index, Text[i], Foreground, Background, (byte) Style);
-		}
+			WriteAt(X + i, Y, Text[i], Foreground, Background, Style);
 	}
-	
-	public void WriteAt(int X, int Y, char Character) => WriteAt(X, Y, Character, DefaultForeground, DefaultBackground, StyleCode.None);
 	
 	public void WriteAt(int X, int Y, char Character, Color24 Foreground, Color24 Background, StyleCode Style)
 	{
@@ -122,24 +117,5 @@ public partial class Canvas
 		}
 		
 		return;
-	}
-	
-	/// <summary>
-	/// Force the pixel to be modified against its will
-	/// <br/>
-	/// This is a pixel rights violation, nobody tell Geneva
-	/// </summary>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private void ForceModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
-	{
-		var NewPixel = new Pixel()
-		{
-			Character = Character,
-			Foreground = Foreground,
-			Background = Background,
-			Style = StyleMask
-		};
-		
-		IndexUpdates[Index] = NewPixel;
 	}
 }

@@ -8,27 +8,33 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
-using System.Collections.Concurrent;
 
 public unsafe partial class Canvas
 {
 	public int Width { get; private set; }
 	public int Height { get; private set; }
-
-	private int TotalCellCount => Width * Height;
-
-	// Contains updated indices for each new frame
-	private PooledDictionary<int, Pixel> IndexUpdates = new(1000, ClearMode.Never);
 	
+	private int TotalCellCount => Width * Height;
+	
+	#region Render Thread Stuff
 	private Thread RenderThread;
+	private bool DoRender = false;
+	private DoubleRenderBuffer RenderBuffers = new(300);
+	private RenderBuffer BackBuffer => RenderBuffers.BackBuffer;
+	private RenderBuffer FrontBuffer => RenderBuffers.FrontBuffer;
+	#endregion
+	
+	#region Write Thread Stuff
 	private Thread WriteThread;
-
-	public bool DoRender = false;
-
+	private bool DoWrite = false;
+	private DoubleFrameBuffer DoubleWriteBuffer = new();
+	private Utf8StringBuffer FrontWriteBuffer => DoubleWriteBuffer.FrontBuffer;
+	private Utf8StringBuffer BackWriteBuffer => DoubleWriteBuffer.BackBuffer;
 	private Action<ReadOnlyMemory<byte>> PlatformWriteStdout;
-
+	#endregion
+	
 	public int BufferDumpQuantity = 0;
-
+	
 	public Canvas()
 	{
 		Width = Console.WindowWidth;
@@ -63,7 +69,7 @@ public unsafe partial class Canvas
 			IsBackground = true,
 			Priority = ThreadPriority.AboveNormal
 		};
-
+		
 		WriteThread = new(WriteThreadProc)
 		{
 			Name = "Write Thread",
@@ -76,7 +82,7 @@ public unsafe partial class Canvas
 		
 		InitScreen();
 	}
-
+	
 	private void InitScreen()
 	{
 		// Set up the screen state (set screen to full white on black and reset cursor to home)
@@ -85,7 +91,7 @@ public unsafe partial class Canvas
 		// Set up render state
 		LastPixel = new(0, ' ', Color24.White, Color24.Black, 0);
 	}
-
+	
 	/// <summary>
 	/// Resizes the canvas.
 	/// </summary>
@@ -169,32 +175,7 @@ public unsafe partial class Canvas
 		BackBuffer.ToSkip.Clear();
 	}
 	
-	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	{
-		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
-		var drawEnumerator = FrontBuffer.ToDraw.Values.GetEnumerator();
-
-		while (clearEnumerator.MoveNext())	
-			RenderClearPixel(clearEnumerator.Current, ref writer);
-		
-		while (drawEnumerator.MoveNext())
-		{
-			var NewPixel = drawEnumerator.Current;
-			RenderPixel(in NewPixel, ref writer);
-		}
-		
-		//	for (int i = 0; i < FrontBuffer.ToDraw.Span.Length; i++)
-		//	{
-		//		//var NewPixel = FrontBuffer.ToDraw.Span[i];
-		//		RenderPixel(in FrontBuffer.ToDraw.Span[i], ref writer);
-		//	}
-	}
 	
-	private DoubleRenderBuffer RenderBuffers = new(300);
-	
-	private RenderBuffer BackBuffer => RenderBuffers.BackBuffer;
-	private RenderBuffer FrontBuffer => RenderBuffers.FrontBuffer;
 
 	private void RenderThreadProc()
 	{
@@ -225,11 +206,21 @@ public unsafe partial class Canvas
 		goto loop_start;
 	}
 	
-	private bool DoWrite = false;
-	private DoubleFrameBuffer DoubleWriteBuffer = new();
+	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	{
+		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
+		var drawEnumerator = FrontBuffer.ToDraw.Values.GetEnumerator();
+
+		while (clearEnumerator.MoveNext())	
+			RenderClearPixel(clearEnumerator.Current, ref writer);
+		
+		while (drawEnumerator.MoveNext())
+		{
+			var NewPixel = drawEnumerator.Current;
+			RenderPixel(in NewPixel, ref writer);
+		}
+	}
 	
-	private Utf8StringBuffer FrontWriteBuffer => DoubleWriteBuffer.FrontBuffer;
-	private Utf8StringBuffer BackWriteBuffer => DoubleWriteBuffer.BackBuffer;
 	
 	private void WriteThreadProc()
 	{
@@ -282,8 +273,7 @@ public unsafe partial class Canvas
 		{
 			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, NewPixel.Style);
 			
-			writer.Append(StyleTransitionSequences[ResetMask * SetMask]);
-			
+			writer.Append(StyleTransitionSequences[ResetMask, SetMask]);
 			//AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
 		}
 		
@@ -317,13 +307,13 @@ public unsafe partial class Canvas
 		LastPixel = new Pixel(CurrentIndex, ' ', Color24.White, Color24.Black, 0);
 	}
 	
-	private string[] StyleTransitionSequences = new string[65536];
+	public string[,] StyleTransitionSequences = new string[256,256];
 
 	private void PrecacheSequences()
 	{
 		for (int r = 0; r < 256; r++)
 			for (int s = 0; s < 256; s++)
-				StyleTransitionSequences[r * s] = GetStyleTransitionSequence((byte) r, (byte) s);
+				StyleTransitionSequences[r, s] = GetStyleTransitionSequence((byte) r, (byte) s);
 	}
 
 	/// <summary>
@@ -393,7 +383,7 @@ public unsafe partial class Canvas
 				if (i != Count - 1) writer.Append(';');
 			}
 	}
-
+	
 	private string GetStyleTransitionSequence(byte ResetMask, byte SetMask)
 	{
 		string temp = "\u001b[";
@@ -402,14 +392,16 @@ public unsafe partial class Canvas
 			temp += GetResetSequence(ResetMask);
 
 		temp += GetSetSequence(SetMask);
+		
+		temp = temp.TrimEnd(';');
 		temp += 'm';
-
+		
 		return temp;
 	}
-
+	
 	private string GetSetSequence(byte SetMask)
 	{
-		string temp = "\u001b[";
+		string temp = string.Empty;
 
 		Span<StyleCode> Codes = stackalloc StyleCode[8];
 
@@ -418,8 +410,7 @@ public unsafe partial class Canvas
 		for (int i = 0; i < Count; i++)
 			if ((SetMask & Codes[i].GetMask()) >= 1)
 			{
-				temp += $"{Codes[i].GetCode()}";
-				if (i != Count - 1) temp += ';';
+				temp += $"{Codes[i].GetCode()};";
 			}
 
 		return temp;
@@ -427,7 +418,7 @@ public unsafe partial class Canvas
 
 	private string GetResetSequence(byte ResetMask)
 	{
-		string temp = "\u001b[";
+		string temp = string.Empty;
 
 		Span<StyleCode> Codes = stackalloc StyleCode[8];
 
@@ -436,8 +427,7 @@ public unsafe partial class Canvas
 		for (int i = 0; i < Count; i++)
 			if ((ResetMask & Codes[i].GetMask()) >= 1)
 			{
-				temp += $"{Codes[i].GetResetCode()}";
-				if (i != Count - 1) temp += ';';
+				temp += $"{Codes[i].GetResetCode()};";
 			}
 
 		return temp;
