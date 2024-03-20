@@ -60,7 +60,7 @@ internal unsafe class Kernel32
 	 IntPtr templateFile);
 
 	[DllImport("kernel32.dll")]
-	public static extern bool WriteFile(IntPtr fFile, byte* lpBuffer, uint nNumberOfBytesToWrite, out uint lpNumberOfBytesWritten, IntPtr lpOverlapped);
+	public static extern bool WriteFile(nint fFile, byte* lpBuffer, uint nNumberOfBytesToWrite, out uint lpNumberOfBytesWritten, nint lpOverlapped);
 	
 	[DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
 	public static extern Int32 WaitForSingleObject(IntPtr handle, int milliseconds);

@@ -96,26 +96,17 @@ public partial class Canvas
 
 	// Entry point for modifying the screen
 	// Handles pixel modifications and optimizes redundant ones away when able
-	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
 	{
 		// If this space is not actually going to be visible, cull it
 		if (Character == ' ' && Background == DefaultBackground)
 			return;
 		
-		var NewPixel = new Pixel()
-		{
-			Index = Index,
-			Character = Character,
-			Foreground = Foreground,
-			Background = Background,
-			Style = StyleMask
-		};
-
-		NewPixel.CalculateHash();
+		var NewPixel = new Pixel(Index, Character, Foreground, Background, StyleMask);
 		
-		// If we are added a pixel to the screen that was going to be cleared,
-		// then remove it from the clear list since we are going to overwrite or skip it anyways
+		// If we are adding a pixel to a screen location that was already going to be cleared,
+		// then remove that location from the clear list since we are going to overwrite or skip it anyways
 		if (BackBuffer.ToClear.TryGetValue(Index, out Pixel OldPixel))
 		{
 			BackBuffer.ToClear.Remove(Index);
@@ -123,11 +114,11 @@ public partial class Canvas
 			if (OldPixel == NewPixel)
 				BackBuffer.ToSkip.Add(NewPixel);
 			else
-				BackBuffer.ToDraw.Add(NewPixel);
+				BackBuffer.ToDraw[Index] = NewPixel;
 		}
 		else
 		{
-			BackBuffer.ToDraw.Add(NewPixel);
+			BackBuffer.ToDraw[Index] = NewPixel;
 		}
 		
 		return;

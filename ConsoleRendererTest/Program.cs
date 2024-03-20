@@ -121,12 +121,13 @@ while (Running)
 	//	else
 	//		f++;
 	
-	DoRender();
+	//DoRender();
 	c.WriteAt(X, Y, "waaahhhhttttt");
 	
-	c.WriteAt(0, 0, $"MT Wait: {c.MainThreadWait.TotalMicroseconds}");
-	c.WriteAt(0, 1, $"RT Wait: {c.RenderThreadWait.TotalMicroseconds}");
-	c.WriteAt(0, 2, $"WT Wait: {c.WriteThreadWait.TotalMicroseconds}");
+	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns");
+	c.WriteAt(0, 1, $"RT-MT Wait: {c.RenderThreadMTWait.TotalNanoseconds,-7} ns");
+	c.WriteAt(0, 2, $"RT-WT Wait: {c.RenderThreadWTWait.TotalNanoseconds,-7} ns");
+	c.WriteAt(0, 3, $"WT-RT Wait: {c.WriteThreadWait.TotalNanoseconds,-7} ns");
 	
 	c.Flush();
 	

@@ -16,7 +16,7 @@ internal class RenderBuffer
 	/// <summary>
 	/// Contains pixels not currently on the screen that will be drawn for next frame
 	/// </summary>
-	internal PooledList<Pixel> ToDraw { get; private set; }
+	internal PooledDictionary<int, Pixel> ToDraw { get; private set; }
 	
 	internal RenderBuffer(int Capacity)
 	{

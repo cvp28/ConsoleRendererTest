@@ -4,13 +4,7 @@ using Utf8StringInterpolation;
 
 namespace SharpCanvas;
 
-public enum ColorLevel
-{
-	Foreground,
-	Background
-}
-
-public struct Color24
+public readonly struct Color24
 {
 	public byte Red { get; init; }
 	public byte Green { get; init; }
@@ -44,7 +38,7 @@ public struct Color24
 	
 	public override bool Equals(object obj) => GetHashCode() == obj.GetHashCode();
 
-	private int _hash;
+	private readonly int _hash;
 
 	public override int GetHashCode() => _hash;
 }

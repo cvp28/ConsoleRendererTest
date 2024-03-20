@@ -8,6 +8,7 @@ using Utf8StringInterpolation;
 namespace SharpCanvas;
 using Interop;
 using Codes;
+using System.Collections.Concurrent;
 
 public unsafe partial class Canvas
 {
@@ -82,16 +83,7 @@ public unsafe partial class Canvas
 		Console.Write($"\u001b[0m\u001b[38;2;255;255;255m\u001b[48;2;0;0;0m{new string(' ', TotalCellCount)}\u001b[;H");
 		
 		// Set up render state
-		LastPixel = new()
-		{
-			Index = 0,
-			Character = ' ',
-			Foreground = new(255, 255, 255),
-			Background = new(0, 0, 0),
-			Style = 0
-		};
-		
-		LastPixel.CalculateHash();
+		LastPixel = new(0, ' ', Color24.White, Color24.Black, 0);
 	}
 
 	/// <summary>
@@ -126,7 +118,7 @@ public unsafe partial class Canvas
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private int ScreenIX(int X, int Y) => ((Y % Height) * Width + (X % Width));// % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
+	private int ScreenIX(int X, int Y) => Y % Height * Width + (X % Width);// % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
 
 	public void DoBufferDump(int Quantity)
 	{
@@ -138,9 +130,11 @@ public unsafe partial class Canvas
 	}
 	
 	public TimeSpan MainThreadWait { get; private set; }
-	public TimeSpan RenderThreadWait { get; private set; }
+	public TimeSpan RenderThreadMTWait { get; private set; }
+	public TimeSpan RenderThreadWTWait { get; private set; }
 	public TimeSpan WriteThreadWait { get; private set; }
 	
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private TimeSpan ExecuteTimed(Action ActionToMeasure)
 	{
 		var start = Stopwatch.GetTimestamp();
@@ -149,7 +143,7 @@ public unsafe partial class Canvas
 	}
 	
 	public void Flush()
-	{	
+	{
 		// Time our wait for the render thread to finish
 		MainThreadWait = ExecuteTimed(delegate
 		{
@@ -164,31 +158,37 @@ public unsafe partial class Canvas
 		
 		// Accessing FrontBuffer from the main thread would otherwise be wrong
 		// But, we are only reading from it here - so it should be fine
-		
+			
 		foreach (var p in FrontBuffer.ToSkip)
 			BackBuffer.ToClear[p.Index] = p;
 		
 		foreach (var p in FrontBuffer.ToDraw)
-			BackBuffer.ToClear[p.Index] = p;
+			BackBuffer.ToClear[p.Key] = p.Value;
 		
 		BackBuffer.ToDraw.Clear();
 		BackBuffer.ToSkip.Clear();
 	}
 	
-	[MethodImpl(MethodImplOptions.AggressiveOptimization)]
+	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
-		//var drawEnumerator = FrontBuffer.ToDraw.GetEnumerator();
+		var drawEnumerator = FrontBuffer.ToDraw.Values.GetEnumerator();
 
 		while (clearEnumerator.MoveNext())	
 			RenderClearPixel(clearEnumerator.Current, ref writer);
-
-		for (int i = 0; i < FrontBuffer.ToDraw.Span.Length; i++)
+		
+		while (drawEnumerator.MoveNext())
 		{
-			var NewPixel = FrontBuffer.ToDraw.Span[i];
-			RenderPixel(ref NewPixel, ref writer);
+			var NewPixel = drawEnumerator.Current;
+			RenderPixel(in NewPixel, ref writer);
 		}
+		
+		//	for (int i = 0; i < FrontBuffer.ToDraw.Span.Length; i++)
+		//	{
+		//		//var NewPixel = FrontBuffer.ToDraw.Span[i];
+		//		RenderPixel(in FrontBuffer.ToDraw.Span[i], ref writer);
+		//	}
 	}
 	
 	private DoubleRenderBuffer RenderBuffers = new(300);
@@ -199,19 +199,23 @@ public unsafe partial class Canvas
 	private void RenderThreadProc()
 	{
 	loop_start:
-		RenderThreadWait = ExecuteTimed(delegate
+		RenderThreadMTWait = ExecuteTimed(delegate
 		{
 			while (!DoRender) Thread.Yield();
 		});
 
 		DoubleWriteBuffer.BackBuffer = Utf8String.CreateWriter(out var writer);
+		//var buf = Utf8String.CreateWriter(out var writer);
 		
 		RenderPixels(ref writer);
 		
 		writer.Flush(); // Fill buffer with writer contents
 		writer.Dispose();
-
-		while (DoWrite) Thread.Yield();
+		
+		RenderThreadWTWait = ExecuteTimed(delegate
+		{
+			while (DoWrite) Thread.Yield();
+		});
 		
 		DoubleWriteBuffer.Swap();
 		
@@ -220,13 +224,13 @@ public unsafe partial class Canvas
 		DoRender = false;
 		goto loop_start;
 	}
-
+	
 	private bool DoWrite = false;
 	private DoubleFrameBuffer DoubleWriteBuffer = new();
-
+	
 	private Utf8StringBuffer FrontWriteBuffer => DoubleWriteBuffer.FrontBuffer;
 	private Utf8StringBuffer BackWriteBuffer => DoubleWriteBuffer.BackBuffer;
-
+	
 	private void WriteThreadProc()
 	{
 	loop_start:
@@ -234,11 +238,9 @@ public unsafe partial class Canvas
 		{
 			while (!DoWrite) Thread.Yield();
 		});
-
+		
 		if (FrontWriteBuffer.WrittenCount != 0)
 			PlatformWriteStdout(FrontWriteBuffer.WrittenMemory);
-
-		DoubleWriteBuffer.DisposeFrontBuffer();
 		
 		DoWrite = false;
 		goto loop_start;
@@ -249,7 +251,7 @@ public unsafe partial class Canvas
 	private int GetY(int Index) => Index / Width;
 	
 	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private void RenderPixel(ref Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
+	private void RenderPixel(in Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
 		var CurrentIndex = NewPixel.Index;
@@ -312,16 +314,7 @@ public unsafe partial class Canvas
 		
 		writer.Append(' ');
 		
-		LastPixel.Index = CurrentIndex;
-		
-		//LastPixel = new Pixel()
-		//{
-		//	Index = CurrentIndex,
-		//	Character = ' ',
-		//	Foreground = Color24.White,
-		//	Background = Color24.Black,
-		//	Style = 0
-		//};
+		LastPixel = new Pixel(CurrentIndex, ' ', Color24.White, Color24.Black, 0);
 	}
 	
 	private string[] StyleTransitionSequences = new string[65536];
