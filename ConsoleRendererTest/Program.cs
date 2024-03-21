@@ -1,4 +1,4 @@
-﻿#define BAD_APPLE
+﻿//#define BAD_APPLE
 
 using System.Text;
 using System.Collections.Concurrent;
@@ -122,10 +122,10 @@ while (Running)
 	else
 		f++;
 #else
-	DoRender();
+	//DoRender();
 	c.WriteAt(X, Y, "waaahhhhttttt");
 	
-	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns", Color24.White, Color24.Black, StyleCode.Blink);
+	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns");
 	c.WriteAt(0, 1, $"RT-MT Wait: {c.RenderThreadMTWait.TotalNanoseconds,-7} ns");
 	c.WriteAt(0, 2, $"RT-WT Wait: {c.RenderThreadWTWait.TotalNanoseconds,-7} ns");
 	c.WriteAt(0, 3, $"WT-RT Wait: {c.WriteThreadWait.TotalNanoseconds,-7} ns");

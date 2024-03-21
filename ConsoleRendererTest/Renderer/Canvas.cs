@@ -124,7 +124,7 @@ public unsafe partial class Canvas
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private int ScreenIX(int X, int Y) => Y % Height * Width + (X % Width);// % TotalCellCount; // This effectively wraps-around when input parameters go out-of-bounds
+	private int ScreenIX(int X, int Y) => Y % Height * Width + (X % Width);
 
 	public void DoBufferDump(int Quantity)
 	{
@@ -161,22 +161,16 @@ public unsafe partial class Canvas
 		DoRender = true;
 		
 		BackBuffer.ToClear.Clear();
+		BackBuffer.ToDraw.Clear();
+		BackBuffer.ToSkip.Clear();
 		
 		// Accessing FrontBuffer from the main thread would otherwise be wrong
 		// But, we are only reading from it here - so it should be fine
-			
-		foreach (var p in FrontBuffer.ToSkip)
-			BackBuffer.ToClear[p.Index] = p;
 		
-		foreach (var p in FrontBuffer.ToDraw)
-			BackBuffer.ToClear[p.Key] = p.Value;
-		
-		BackBuffer.ToDraw.Clear();
-		BackBuffer.ToSkip.Clear();
+		foreach (var p in FrontBuffer.ToSkip) BackBuffer.ToClear[p.Index] = p;
+		foreach (var p in FrontBuffer.ToDraw) BackBuffer.ToClear[p.Key] = p.Value;
 	}
 	
-	
-
 	private void RenderThreadProc()
 	{
 	loop_start:
@@ -186,7 +180,6 @@ public unsafe partial class Canvas
 		});
 
 		DoubleWriteBuffer.BackBuffer = Utf8String.CreateWriter(out var writer);
-		//var buf = Utf8String.CreateWriter(out var writer);
 		
 		RenderPixels(ref writer);
 		
@@ -221,7 +214,6 @@ public unsafe partial class Canvas
 		}
 	}
 	
-	
 	private void WriteThreadProc()
 	{
 	loop_start:
@@ -241,7 +233,6 @@ public unsafe partial class Canvas
 	
 	private int GetY(int Index) => Index / Width;
 	
-	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void RenderPixel(in Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
 	{
 		var LastIndex = LastPixel.Index;
@@ -446,7 +437,7 @@ public static class StyleHelper
 
 		return Temp;
 	}
-
+	
 	/// <summary>
 	/// <para>Gets every stylecode enum contained in the packed byte and returns them in "Dest"</para>
 	/// <para>This allows client code to easily prevent heap allocations from parsing packed styles</para>

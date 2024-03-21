@@ -18,17 +18,6 @@ public enum StyleCode : byte
 	CrossedOut	= 64
 }
 
-public enum ResetCode : byte
-{
-	ResetAll		= 0,
-	NormalIntensity	= 22,
-	NotItalicised	= 23,
-	NotUnderlined	= 24,
-	NotBlinking		= 25,
-	NotInverted		= 27,
-	NotCrossedOut	= 29
-}
-
 public static class CodeHelper
 {
 	public static byte GetMask(this StyleCode Style) => Style switch
