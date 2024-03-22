@@ -1,8 +1,5 @@
-﻿using System.Runtime.CompilerServices;
-
+﻿
 namespace SharpCanvas;
-
-using Codes;
 
 public partial class Canvas
 {
@@ -90,8 +87,6 @@ public partial class Canvas
 	}
 
 	// Entry point for modifying the screen
-	// Handles pixel modifications and optimizes redundant ones away when able
-	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
 	private void TryModifyPixel(int Index, char Character, Color24 Foreground, Color24 Background, byte StyleMask)
 	{
 		// If this space is not actually going to be visible, cull it

@@ -2,12 +2,10 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-using Collections.Pooled;
 using Utf8StringInterpolation;
 
 namespace SharpCanvas;
-using Interop;
-using Codes;
+
 
 public unsafe partial class Canvas
 {
@@ -15,22 +13,9 @@ public unsafe partial class Canvas
 	public int Height { get; private set; }
 	
 	private int TotalCellCount => Width * Height;
-	
-	#region Render Thread Stuff
-	private Thread RenderThread;
-	private bool DoRender = false;
-	private DoubleRenderBuffer RenderBuffers = new(300);
-	private RenderBuffer BackBuffer => RenderBuffers.BackBuffer;
-	private RenderBuffer FrontBuffer => RenderBuffers.FrontBuffer;
-	#endregion
-	
+
 	#region Write Thread Stuff
-	private Thread WriteThread;
-	private bool DoWrite = false;
-	private DoubleFrameBuffer DoubleWriteBuffer = new();
-	private Utf8StringBuffer FrontWriteBuffer => DoubleWriteBuffer.FrontBuffer;
-	private Utf8StringBuffer BackWriteBuffer => DoubleWriteBuffer.BackBuffer;
-	private Action<ReadOnlyMemory<byte>> PlatformWriteStdout;
+	
 	#endregion
 	
 	public int BufferDumpQuantity = 0;
@@ -45,12 +30,12 @@ public unsafe partial class Canvas
 		#region Platform-specific stdout write delegates
 		if (OperatingSystem.IsWindows())
 		{
-			var Handle = Kernel32.GetStdHandle(-11);
+			var Handle = k32GetStdHandle(-11);
 			
 			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
 				using var hBuffer = Buffer.Pin();
-				Kernel32.WriteFile(Handle, (byte*) hBuffer.Pointer, (uint) Buffer.Length, out _, nint.Zero);
+				k32WriteFile(Handle, (byte*) hBuffer.Pointer, (uint) Buffer.Length, out _, nint.Zero);
 			};
 		}
 		else if (OperatingSystem.IsLinux())
@@ -58,11 +43,12 @@ public unsafe partial class Canvas
 			PlatformWriteStdout = delegate (ReadOnlyMemory<byte> Buffer)
 			{
 				using var hBuffer = Buffer.Pin();
-				Libc.Write(1, (byte*) hBuffer.Pointer, (uint) Buffer.Length);
+				libcWrite(1, (byte*) hBuffer.Pointer, (uint) Buffer.Length);
 			};
 		}
 		#endregion
-		
+
+		#region Threading Init
 		RenderThread = new(RenderThreadProc)
 		{
 			Name = "Render Thread",
@@ -79,7 +65,8 @@ public unsafe partial class Canvas
 		
 		RenderThread.Start();
 		WriteThread.Start();
-		
+		#endregion
+
 		InitScreen();
 	}
 	
@@ -169,133 +156,6 @@ public unsafe partial class Canvas
 		
 		foreach (var p in FrontBuffer.ToSkip) BackBuffer.ToClear[p.Index] = p;
 		foreach (var p in FrontBuffer.ToDraw) BackBuffer.ToClear[p.Key] = p.Value;
-	}
-	
-	private void RenderThreadProc()
-	{
-	loop_start:
-		RenderThreadMTWait = ExecuteTimed(delegate
-		{
-			while (!DoRender) Thread.Yield();
-		});
-
-		DoubleWriteBuffer.BackBuffer = Utf8String.CreateWriter(out var writer);
-		
-		RenderPixels(ref writer);
-		
-		writer.Flush(); // Fill buffer with writer contents
-		writer.Dispose();
-		
-		RenderThreadWTWait = ExecuteTimed(delegate
-		{
-			while (DoWrite) Thread.Yield();
-		});
-		
-		DoubleWriteBuffer.Swap();
-		
-		DoWrite = true;
-		
-		DoRender = false;
-		goto loop_start;
-	}
-	
-	private void RenderPixels(ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	{
-		var clearEnumerator = FrontBuffer.ToClear.Keys.GetEnumerator();
-		var drawEnumerator = FrontBuffer.ToDraw.Values.GetEnumerator();
-
-		while (clearEnumerator.MoveNext())	
-			RenderClearPixel(clearEnumerator.Current, ref writer);
-		
-		while (drawEnumerator.MoveNext())
-		{
-			var NewPixel = drawEnumerator.Current;
-			RenderPixel(in NewPixel, ref writer);
-		}
-	}
-	
-	private void WriteThreadProc()
-	{
-	loop_start:
-		WriteThreadWait = ExecuteTimed(delegate
-		{
-			while (!DoWrite) Thread.Yield();
-		});
-		
-		if (FrontWriteBuffer.WrittenCount != 0)
-			PlatformWriteStdout(FrontWriteBuffer.WrittenMemory);
-		
-		DoWrite = false;
-		goto loop_start;
-	}
-
-	private Pixel LastPixel;
-	
-	private int GetY(int Index) => Index / Width;
-	
-	private void RenderPixel(in Pixel NewPixel, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	{
-		var LastIndex = LastPixel.Index;
-		var CurrentIndex = NewPixel.Index;
-		
-		// First, handle position
-		if (CurrentIndex - LastIndex != 1)
-		{
-			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
-			{
-				int count = CurrentIndex - LastIndex - 1;
-				writer.AppendFormat($"\u001b[{count}C");            // If indices are on same line and spaced further than 1 cell apart, shift right
-			}
-			else
-			{
-				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
-				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");    // If anywhere else, set absolute position
-			}
-		}
-		
-		// Then, handle colors and styling
-		if (NewPixel.Foreground != LastPixel.Foreground)
-			NewPixel.Foreground.AsForegroundVT(ref writer);
-		
-		if (NewPixel.Background != LastPixel.Background)
-			NewPixel.Background.AsBackgroundVT(ref writer);
-		
-		if (NewPixel.Style != LastPixel.Style)
-		{
-			(byte ResetMask, byte SetMask) = MakeStyleTransitionMasks(LastPixel.Style, NewPixel.Style);
-			
-			writer.Append(StyleTransitionSequences[ResetMask, SetMask]);
-			//AppendStyleTransitionSequence(ResetMask, SetMask, ref writer);
-		}
-		
-		writer.Append(NewPixel.Character);
-		LastPixel = NewPixel;
-	}
-
-	//[MethodImpl(MethodImplOptions.AggressiveOptimization)]
-	private void RenderClearPixel(int CurrentIndex, ref Utf8StringWriter<ArrayBufferWriter<byte>> writer)
-	{
-		var LastIndex = LastPixel.Index;
-		//var CurrentIndex = NewPixel.Index;
-		
-		// First, handle position
-		if (CurrentIndex - LastIndex != 1)
-		{
-			if (GetY(LastIndex) == GetY(CurrentIndex) && CurrentIndex > LastIndex)
-			{
-				int count = CurrentIndex - LastIndex - 1;
-				writer.AppendFormat($"\u001b[{count}C");            // If indices are on same line and spaced further than 1 cell apart, shift right
-			}
-			else
-			{
-				(int Y, int X) = Math.DivRem(CurrentIndex, Width);
-				writer.AppendFormat($"\u001b[{Y + 1};{X + 1}H");    // If anywhere else, set absolute position
-			}
-		}
-		
-		writer.Append(' ');
-		
-		LastPixel = new Pixel(CurrentIndex, ' ', Color24.White, Color24.Black, 0);
 	}
 	
 	public string[,] StyleTransitionSequences = new string[256,256];
@@ -457,10 +317,10 @@ public static class StyleHelper
 		
 		int Index = 0;
 		
-		for (int i = 0; i < 7; i++)
-			if ((PackedStyle & CodesGlobals.AllStyles[i].GetMask()) >= 1)
+		for (int i = 1; i != 128; i *= 2)
+			if ((PackedStyle & i) >= 1)
 			{
-				Dest[Index] = CodesGlobals.AllStyles[i];
+				Dest[Index] = (StyleCode) i;
 				Index++;
 			}
 		

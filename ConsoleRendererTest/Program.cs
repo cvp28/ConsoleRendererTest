@@ -4,7 +4,6 @@ using System.Text;
 using System.Collections.Concurrent;
 
 using SharpCanvas;
-using SharpCanvas.Codes;
 
 Console.CursorVisible = false;
 Console.OutputEncoding = Encoding.UTF8;
@@ -15,7 +14,7 @@ var c = new Canvas();
 
 #if BAD_APPLE
 Console.Write("Retrieving frames... ");
-string[] FramePaths = Directory.GetFiles(@"C:\Users\CVPlanck\Documents\repos\ConsoleRendererTest\bad_apple_frames_ascii");
+string[] FramePaths = Directory.GetFiles(@"C:\Users\Carson\source\repos\ConsoleRendererTest\bad_apple_frames_ascii");
 string[] Frames = new string[FramePaths.Length];
 await Task.Run(delegate
 {
@@ -122,7 +121,7 @@ while (Running)
 	else
 		f++;
 #else
-	//DoRender();
+	DoRender();
 	c.WriteAt(X, Y, "waaahhhhttttt");
 	
 	c.WriteAt(0, 0, $"MT-RT Wait: {c.MainThreadWait.TotalNanoseconds,-7} ns");
@@ -131,6 +130,8 @@ while (Running)
 	c.WriteAt(0, 3, $"WT-RT Wait: {c.WriteThreadWait.TotalNanoseconds,-7} ns");
 	
 	c.Flush();
+
+	//Thread.Sleep(12);
 #endif
 
 	CurrentFPS++;

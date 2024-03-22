@@ -1,10 +1,5 @@
 ﻿
-namespace SharpCanvas.Codes;
-
-public static class CodesGlobals
-{
-	public static readonly StyleCode[] AllStyles = { StyleCode.Bold, StyleCode.Dim, StyleCode.Italic, StyleCode.Underlined, StyleCode.Blink, StyleCode.Inverted, StyleCode.CrossedOut };
-}
+namespace SharpCanvas;
 
 public enum StyleCode : byte
 {

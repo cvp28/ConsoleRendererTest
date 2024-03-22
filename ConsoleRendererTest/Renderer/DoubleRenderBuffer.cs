@@ -11,7 +11,7 @@ internal class RenderBuffer
 	/// <summary>
 	/// Contains pixels currently on the screen that will persist to the next frame
 	/// </summary>
-	internal PooledSet<Pixel> ToSkip { get; private set; }
+	internal PooledList<Pixel> ToSkip { get; private set; }
 	
 	/// <summary>
 	/// Contains pixels not currently on the screen that will be drawn for next frame
